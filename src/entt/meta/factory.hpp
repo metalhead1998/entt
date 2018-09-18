@@ -109,6 +109,31 @@ class meta_factory {
 
 public:
     /**
+     * @brief Assigns a meta base to a meta type.
+     *
+     * A reflected base class must be a real base class of the reflected type.
+     *
+     * @tparam Base Type of the base class to assign to the meta type.
+     * @return A meta factory for the parent type.
+     */
+    template<typename Base>
+    meta_factory & base() ENTT_NOEXCEPT {
+        static_assert(std::is_base_of_v<Base, Type>);
+        auto * const type = internal::meta_info<Type>::type;
+
+        static internal::meta_base_node node{
+            type->base,
+            &internal::meta_info<Base>::resolve
+        };
+
+        assert((!internal::meta_info<Type>::template base<Base>));
+        internal::meta_info<Type>::template base<Base> = &node;
+        type->base = &node;
+
+        return *this;
+    }
+
+    /**
      * @brief Assigns a meta constructor to a meta type.
      *
      * Free functions can be assigned to meta types in the role of
@@ -379,7 +404,9 @@ inline meta_type * resolve(const char *str) ENTT_NOEXCEPT {
  */
 template<typename Op>
 void resolve(Op op) ENTT_NOEXCEPT {
-    internal::iterate(std::move(op), internal::meta_info<>::type);
+    internal::iterate([&op](auto *node) {
+        op(node->meta());
+    }, internal::meta_info<>::type);
 }
 
 

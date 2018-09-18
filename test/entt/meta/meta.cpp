@@ -80,6 +80,8 @@ struct Meta: ::testing::Test {
                 .data<&base_class::value>("value");
 
         entt::reflect<derived_class>("derived")
+                .ctor<>()
+                .base<base_class>()
                 .func<&derived_class::do_nothing>("noop")
                 .func<&derived_class::square>("square")
                 .func<&derived_class::div>("div")
@@ -176,8 +178,8 @@ TEST_F(Meta, Struct) {
 
     ASSERT_STREQ(type->name(), "derived");
 
-    type->ctor([](auto *) {
-        FAIL();
+    type->ctor([](auto *ctor) {
+        ASSERT_EQ(ctor->size(), typename entt::meta_ctor::size_type{});
     });
 
     ASSERT_EQ(type->dtor(), nullptr);
@@ -186,6 +188,8 @@ TEST_F(Meta, Struct) {
         FAIL();
     });
 
+    ASSERT_NE(type->base("base"), nullptr);
+    ASSERT_EQ(type->base("esab"), nullptr);
     ASSERT_NE(type->data("value"), nullptr);
     ASSERT_EQ(type->data("eulav"), nullptr);
     ASSERT_NE(type->func("square"), nullptr);
@@ -708,4 +712,23 @@ TEST_F(Meta, BaseDerivedClasses) {
 
     ASSERT_EQ(base->func("div")->invoke(&instance, 10).to<int>(), 1);
     ASSERT_EQ(derived->func("div")->invoke(&instance, 99).to<int>(), 1);
+
+    ASSERT_NE(derived->base("base"), nullptr);
+
+    derived->base([base](auto *curr) {
+        ASSERT_EQ(curr, base);
+    });
+
+    auto any = derived->construct();
+
+    ASSERT_TRUE(any.convertible<derived_class>());
+    ASSERT_TRUE(any.convertible<base_class>());
+    ASSERT_TRUE(any.valid());
 }
+
+// auto &obj = any.to<base_class>();
+// TODO data must search also through base classes (this way we have not to reflect members for derived types)
+// TODO func must search also through base classes (this way we have not to reflect members for derived types)
+// TODO test overriden functions (where overriden means from a meta point of view)
+// TODO test for properties, data and functions in base classes
+// ASSERT_EQ();

@@ -35,6 +35,7 @@ namespace internal {
 
 
 struct meta_prop_node;
+struct meta_base_node;
 struct meta_ctor_node;
 struct meta_dtor_node;
 struct meta_data_node;
@@ -57,6 +58,9 @@ struct meta_node<Type> {
     static meta_type_node *type;
 
     template<typename>
+    static meta_base_node *base;
+
+    template<typename>
     static meta_ctor_node *ctor;
 
     template<auto>
@@ -74,6 +78,11 @@ struct meta_node<Type> {
 
 template<typename Type>
 meta_type_node * meta_node<Type>::type = nullptr;
+
+
+template<typename Type>
+template<typename>
+meta_base_node * meta_node<Type>::base = nullptr;
 
 
 template<typename Type>
@@ -105,6 +114,12 @@ struct meta_prop_node final {
     const meta_any &(* const key)();
     const meta_any &(* const value)();
     meta_prop *(* const meta)();
+};
+
+
+struct meta_base_node final {
+    meta_base_node * const next;
+    meta_type_node *(* const type)();
 };
 
 
@@ -168,6 +183,7 @@ struct meta_type_node final {
     meta_prop_node * const prop;
     void(* const destroy)(void *);
     meta_type *(* const meta)();
+    meta_base_node *base;
     meta_ctor_node *ctor;
     meta_dtor_node *dtor;
     meta_data_node *data;
@@ -177,23 +193,48 @@ struct meta_type_node final {
 
 template<typename Op, typename Node>
 auto iterate(Op op, const Node *curr) ENTT_NOEXCEPT {
-    while(curr) {
-        op(curr->meta());
-        curr = curr->next;
+    if constexpr(std::is_void_v<decltype(op(curr))>) {
+        while(curr) {
+            op(curr);
+            curr = curr->next;
+        }
+    } else {
+        while(curr && !op(curr)) {
+            curr = curr->next;
+        }
+
+        return curr;
     }
 }
 
-template<typename Key>
-auto property(Key &&key, const meta_prop_node *curr) {
-    meta_prop *prop = nullptr;
 
-    iterate([&prop, key = std::forward<Key>(key)](auto *curr) {
-        prop = (curr->key().template convertible<Key>() && curr->key() == key) ? curr : prop;
-    }, curr);
+template<auto Member, typename Op>
+auto iterate(Op op, const meta_type_node *node) ENTT_NOEXCEPT
+-> decltype(iterate(op, node->*Member))
+{
+    auto *curr = node->base;
 
-    return prop;
+    if constexpr(std::is_void_v<decltype(op(node->*Member))>) {
+        iterate(op, node->*Member);
+
+        while(curr) {
+            iterate<Member>(op, curr->type());
+            curr = curr->next;
+        }
+    } else {
+        decltype(iterate(op, node->*Member)) ret = iterate(op, node->*Member);
+
+        while(curr && !ret) {
+            ret = iterate<Member>(op, curr->type());
+            curr = curr->next;
+        }
+
+        return ret;
+    }
 }
 
+
+// TODO delete
 template<typename Node>
 auto meta(hashed_string name, const Node *curr) {
     while(curr && curr->name != name) {
@@ -378,7 +419,16 @@ public:
      */
     template<typename Type>
     bool convertible() const ENTT_NOEXCEPT {
-        return internal::meta_info<Type>::resolve() == underlying;
+        const auto *type = internal::meta_info<Type>::resolve();
+        auto *curr = underlying ? underlying->base : nullptr;
+        bool conv = underlying == type;
+
+        while(curr && !conv) {
+            conv = curr->type() == type;
+            curr = curr->next;
+        }
+
+        return conv;
     }
 
     /**
@@ -618,7 +668,9 @@ public:
     template<typename Op>
     inline std::enable_if_t<std::is_invocable_v<Op, meta_prop *>, void>
     prop(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->prop);
+        internal::iterate([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node->prop);
     }
 
     /**
@@ -630,7 +682,12 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::property(std::forward<Key>(key), node->prop);
+        const auto *elem = internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+            const auto &id = curr->meta()->key();
+            return id.template convertible<Key>() && id == key;
+        }, node->prop);
+
+        return elem ? elem->meta() : nullptr;
     }
 
 private:
@@ -683,7 +740,9 @@ public:
     template<typename Op>
     inline std::enable_if_t<std::is_invocable_v<Op, meta_prop *>, void>
     prop(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->prop);
+        internal::iterate([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node->prop);
     }
 
     /**
@@ -695,7 +754,12 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::property(std::forward<Key>(key), node->prop);
+        const auto *elem = internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+            const auto &id = curr->meta()->key();
+            return id.template convertible<Key>() && id == key;
+        }, node->prop);
+
+        return elem ? elem->meta() : nullptr;
     }
 
 private:
@@ -813,7 +877,9 @@ public:
     template<typename Op>
     inline std::enable_if_t<std::is_invocable_v<Op, meta_prop *>, void>
     prop(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->prop);
+        internal::iterate([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node->prop);
     }
 
     /**
@@ -825,7 +891,12 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::property(std::forward<Key>(key), node->prop);
+        const auto *elem = internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+            const auto &id = curr->meta()->key();
+            return id.template convertible<Key>() && id == key;
+        }, node->prop);
+
+        return elem ? elem->meta() : nullptr;
     }
 
 private:
@@ -974,7 +1045,9 @@ public:
     template<typename Op>
     inline std::enable_if_t<std::is_invocable_v<Op, meta_prop *>, void>
     prop(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->prop);
+        internal::iterate([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node->prop);
     }
 
     /**
@@ -986,7 +1059,12 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::property(std::forward<Key>(key), node->prop);
+        const auto *elem = internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+            const auto &id = curr->meta()->key();
+            return id.template convertible<Key>() && id == key;
+        }, node->prop);
+
+        return elem ? elem->meta() : nullptr;
     }
 
 private:
@@ -1019,13 +1097,40 @@ public:
     }
 
     /**
+     * @brief Iterates all the meta base of a meta type.
+     * @tparam Op Type of the function object to invoke.
+     * @param op A valid function object.
+     */
+    template<typename Op>
+    inline void base(Op op) const ENTT_NOEXCEPT {
+        internal::iterate<&internal::meta_type_node::base>([op = std::move(op)](auto *node) {
+            op(node->type()->meta());
+        }, node);
+    }
+
+    /**
+     * @brief Returns the meta base associated with a given name.
+     * @param str The name to use to search for a meta base.
+     * @return The meta base associated with the given name, if any.
+     */
+    inline meta_type * base(const char *str) const ENTT_NOEXCEPT {
+        const auto *elem = internal::iterate<&internal::meta_type_node::base>([name = hashed_string{str}](auto *node) {
+            return node->type()->name == name;
+        }, node);
+
+        return elem ? elem->type()->meta() : nullptr;
+    }
+
+    /**
      * @brief Iterates all the meta constructors of a meta type.
      * @tparam Op Type of the function object to invoke.
      * @param op A valid function object.
      */
     template<typename Op>
     inline void ctor(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->ctor);
+        internal::iterate([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node->ctor);
     }
 
     /**
@@ -1069,7 +1174,9 @@ public:
      */
     template<typename Op>
     inline void data(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->data);
+        internal::iterate<&internal::meta_type_node::data>([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node);
     }
 
     /**
@@ -1078,7 +1185,11 @@ public:
      * @return The meta data associated with the given name, if any.
      */
     inline meta_data * data(const char *str) const ENTT_NOEXCEPT {
-        return internal::meta(hashed_string{str}, node->data);
+        const auto *elem = internal::iterate<&internal::meta_type_node::data>([name = hashed_string{str}](auto *node) {
+            return node->name == name;
+        }, node);
+
+        return elem ? elem->meta() : nullptr;
     }
 
     /**
@@ -1088,7 +1199,9 @@ public:
      */
     template<typename Op>
     inline void func(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->func);
+        internal::iterate<&internal::meta_type_node::func>([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node);
     }
 
     /**
@@ -1097,7 +1210,11 @@ public:
      * @return The meta function associated with the given name, if any.
      */
     inline meta_func * func(const char *str) const ENTT_NOEXCEPT {
-        return internal::meta(hashed_string{str}, node->func);
+        const auto *elem = internal::iterate<&internal::meta_type_node::func>([name = hashed_string{str}](auto *node) {
+            return node->name == name;
+        }, node);
+
+        return elem ? elem->meta() : nullptr;
     }
 
     /**
@@ -1143,7 +1260,9 @@ public:
     template<typename Op>
     inline std::enable_if_t<std::is_invocable_v<Op, meta_prop *>, void>
     prop(Op op) const ENTT_NOEXCEPT {
-        internal::iterate(std::move(op), node->prop);
+        internal::iterate<&internal::meta_type_node::prop>([op = std::move(op)](auto *node) {
+            op(node->meta());
+        }, node);
     }
 
     /**
@@ -1155,7 +1274,12 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::property(std::forward<Key>(key), node->prop);
+        const auto *elem = internal::iterate<&internal::meta_type_node::prop>([key = std::forward<Key>(key)](auto *curr) {
+            const auto &id = curr->meta()->key();
+            return id.template convertible<Key>() && id == key;
+        }, node);
+
+        return elem ? elem->meta() : nullptr;
     }
 
 private:

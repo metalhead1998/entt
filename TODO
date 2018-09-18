@@ -14,7 +14,7 @@
 * work stealing job system (see #100)
 * composable looper so as to pack erased systems, compose runners at different rates and run them at once in the loop
 * meta: sort of meta view based on meta stuff to iterate entities, void * and meta info objects
-* meta: add support for base classes
+* meta: add support for base classes + tests + doc (.md)
 * meta: add support for enums
 * meta: can we do more on "convertibles"?
 * registry::probe<component>(entt) (returns a component * if entt has the component, nullptr otherwise)
