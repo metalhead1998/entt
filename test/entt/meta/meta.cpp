@@ -39,6 +39,11 @@ struct counter {
 
 int counter::value{};
 
+struct abstract_class {
+    virtual ~abstract_class() = default;
+    virtual void do_nothing(int, char) const noexcept = 0;
+};
+
 struct base_class {
     virtual ~base_class() = default;
     virtual int square(int) const noexcept = 0;
@@ -47,9 +52,9 @@ struct base_class {
     double value{0.};
 };
 
-struct derived_class: base_class {
+struct derived_class: abstract_class, base_class {
     int square(int v) const noexcept override { return v*v; }
-    void do_nothing(int, char) const noexcept {}
+    void do_nothing(int, char) const noexcept override {}
     const double cvalue{0.};
 };
 
@@ -73,19 +78,17 @@ struct Meta: ::testing::Test {
 
         entt::reflect<counter>("counter").ctor<>();
 
-        entt::reflect<base_class>("base")
-                .func<&base_class::reset>("reset")
+        entt::reflect<base_class>("base", std::make_pair(properties::int_property, 42))
                 .func<&base_class::square>("square")
                 .func<&base_class::div>("div")
+                .func<&base_class::reset>("reset")
                 .data<&base_class::value>("value");
 
         entt::reflect<derived_class>("derived")
                 .ctor<>()
                 .base<base_class>()
+                .base<abstract_class>()
                 .func<&derived_class::do_nothing>("noop")
-                .func<&derived_class::square>("square")
-                .func<&derived_class::div>("div")
-                .data<&derived_class::value>("value")
                 .data<&derived_class::cvalue>("cvalue");
     }
 };
@@ -118,11 +121,6 @@ TEST_F(Meta, Fundamental) {
     });
 
     ASSERT_NE(type->dtor(), nullptr);
-
-    type->dtor([type](auto *meta) {
-        ASSERT_EQ(type->dtor(), meta);
-    });
-
     ASSERT_NE(type->data("value"), nullptr);
     ASSERT_EQ(type->data("eulav"), nullptr);
 
@@ -163,7 +161,8 @@ TEST_F(Meta, Fundamental) {
 
     ASSERT_EQ(helper_type<char>::value, char{});
 
-    type->destroy(any);
+    entt::meta_instance inst{any.to<char>()};
+    type->destroy(inst);
 
     ASSERT_EQ(helper_type<char>::value, 'c');
 }
@@ -183,11 +182,6 @@ TEST_F(Meta, Struct) {
     });
 
     ASSERT_EQ(type->dtor(), nullptr);
-
-    type->dtor([](auto *) {
-        FAIL();
-    });
-
     ASSERT_NE(type->base("base"), nullptr);
     ASSERT_EQ(type->base("esab"), nullptr);
     ASSERT_NE(type->data("value"), nullptr);
@@ -202,7 +196,7 @@ TEST_F(Meta, MetaAny) {
     entt::meta_any empty{};
     const entt::meta_any &cempty = empty;
 
-    ASSERT_FALSE(empty.valid());
+    ASSERT_FALSE(empty);
     ASSERT_FALSE(cempty);
     ASSERT_EQ(empty.type(), nullptr);
     ASSERT_FALSE(empty.convertible<int>());
@@ -218,7 +212,7 @@ TEST_F(Meta, MetaAny) {
     entt::meta_any any{'c'};
     const entt::meta_any &cany = any;
 
-    ASSERT_TRUE(any.valid());
+    ASSERT_TRUE(any);
     ASSERT_TRUE(cany);
     ASSERT_NE(any.type(), nullptr);
     ASSERT_EQ(any.type(), cany.type());
@@ -253,6 +247,29 @@ TEST_F(Meta, MetaAnyCompare) {
     ASSERT_TRUE(ch1 == ch2);
     ASSERT_FALSE(ch1 == ch3);
     ASSERT_FALSE(d1 == d2);
+}
+
+TEST_F(Meta, MetaAnyConvertible) {
+    entt::meta_any any{derived_class{}};
+    const entt::meta_any &cany = any;
+
+    const void *derived = cany.data<derived_class>();
+    const void *abstract = cany.data<abstract_class>();
+    const void *base = cany.data<base_class>();
+
+    ASSERT_TRUE(cany);
+    ASSERT_TRUE(any);
+
+    ASSERT_TRUE(cany.convertible<base_class>());
+    ASSERT_TRUE(any.convertible<abstract_class>());
+
+    ASSERT_EQ(cany.data<derived_class>(), derived);
+    ASSERT_EQ(cany.data<abstract_class>(), abstract);
+    ASSERT_EQ(cany.data<base_class>(), base);
+
+    ASSERT_EQ(any.data<derived_class>(), derived);
+    ASSERT_EQ(any.data<abstract_class>(), abstract);
+    ASSERT_EQ(any.data<base_class>(), base);
 }
 
 TEST_F(Meta, MetaProp) {
@@ -336,7 +353,7 @@ TEST_F(Meta, MetaDtor) {
 
     ASSERT_NE(helper_type<char>::value, '*');
 
-    dtor->invoke(&ch);
+    dtor->invoke(ch);
 
     ASSERT_EQ(helper_type<char>::value, '*');
 
@@ -361,7 +378,7 @@ TEST_F(Meta, MetaData) {
     derived_class derived;
 
     ASSERT_NE(data, nullptr);
-    ASSERT_EQ(data->parent(), entt::resolve<derived_class>());
+    ASSERT_EQ(data->parent(), entt::resolve<base_class>());
 
     ASSERT_NE(cdata, nullptr);
     ASSERT_EQ(cdata->parent(), entt::resolve<derived_class>());
@@ -382,10 +399,10 @@ TEST_F(Meta, MetaData) {
     ASSERT_FALSE(data->accept<double *>());
     ASSERT_FALSE(data->accept<int>());
 
-    data->set(&derived, 3.);
-    const auto any = data->get(&derived);
+    data->set(derived, 3.);
+    const auto any = data->get(derived);
 
-    ASSERT_TRUE(any.valid());
+    ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<double>());
     ASSERT_EQ(any.to<double>(), 3.);
 
@@ -414,10 +431,10 @@ TEST_F(Meta, MetaDataStatic) {
     ASSERT_FALSE(data->accept<char *>());
     ASSERT_FALSE(data->accept<int>());
 
-    data->set(nullptr, '#');
-    const auto any = data->get(nullptr);
+    data->set(entt::meta_instance{}, '#');
+    const auto any = data->get(entt::meta_instance{});
 
-    ASSERT_TRUE(any.valid());
+    ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<char>());
     ASSERT_EQ(any.to<char>(), '#');
 
@@ -442,10 +459,10 @@ TEST_F(Meta, MetaFunc) {
     derived_class derived;
 
     ASSERT_NE(func, nullptr);
-    ASSERT_EQ(func->parent(), entt::resolve<derived_class>());
+    ASSERT_EQ(func->parent(), entt::resolve<base_class>());
 
     ASSERT_NE(cfunc, nullptr);
-    ASSERT_EQ(cfunc->parent(), entt::resolve<derived_class>());
+    ASSERT_EQ(cfunc->parent(), entt::resolve<base_class>());
 
     ASSERT_STREQ(func->name(), "square");
     ASSERT_EQ(func->size(), entt::meta_func::size_type{1});
@@ -461,14 +478,14 @@ TEST_F(Meta, MetaFunc) {
     ASSERT_FALSE(func->accept<int *>());
     ASSERT_FALSE(func->accept<double>());
 
-    ASSERT_FALSE(cfunc->invoke(&derived, '.').valid());
-    ASSERT_TRUE(cfunc->invoke(&derived, 0).valid());
-    ASSERT_FALSE(func->invoke(&derived, '.').valid());
-    ASSERT_TRUE(func->invoke(&derived, 0).valid());
+    ASSERT_FALSE(cfunc->invoke(derived, '.'));
+    ASSERT_TRUE(cfunc->invoke(derived, 0));
+    ASSERT_FALSE(func->invoke(derived, '.'));
+    ASSERT_TRUE(func->invoke(derived, 0));
 
-    const auto any = func->invoke(&derived, 2);
+    const auto any = func->invoke(derived, 2);
 
-    ASSERT_TRUE(any.valid());
+    ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<int>());
     ASSERT_EQ(any.to<int>(), 4);
 
@@ -525,15 +542,15 @@ TEST_F(Meta, MetaFuncVoid) {
     ASSERT_FALSE(cfunc->accept<double>());
     ASSERT_TRUE((cfunc->accept<int, char>()));
 
-    data->set(&derived, 1.2);
+    data->set(derived, 1.2);
 
-    ASSERT_EQ(data->get(&derived).to<double>(), 1.2);
+    ASSERT_EQ(data->get(derived).to<double>(), 1.2);
 
-    auto any = func->invoke(&derived);
-    cfunc->invoke(&derived, 0, 'c');
+    auto any = func->invoke(derived);
+    cfunc->invoke(derived, 0, 'c');
 
-    ASSERT_EQ(data->get(&derived).to<double>(), 0.);
-    ASSERT_FALSE(any.valid());
+    ASSERT_EQ(data->get(derived).to<double>(), 0.);
+    ASSERT_FALSE(any);
 }
 
 TEST_F(Meta, MetaFuncStatic) {
@@ -560,14 +577,14 @@ TEST_F(Meta, MetaFuncStatic) {
     ASSERT_FALSE(func->accept<char *>());
     ASSERT_FALSE(func->accept<int>());
 
-    ASSERT_FALSE(cfunc->invoke(nullptr, 0).valid());
-    ASSERT_TRUE(cfunc->invoke(nullptr, '.').valid());
-    ASSERT_FALSE(func->invoke(nullptr, 0).valid());
-    ASSERT_TRUE(func->invoke(nullptr, '.').valid());
+    ASSERT_FALSE(cfunc->invoke(entt::meta_instance{}, 0));
+    ASSERT_TRUE(cfunc->invoke(entt::meta_instance{}, '.'));
+    ASSERT_FALSE(func->invoke(entt::meta_instance{}, 0));
+    ASSERT_TRUE(func->invoke(entt::meta_instance{}, '.'));
 
-    const auto any = func->invoke(nullptr, '.');
+    const auto any = func->invoke(entt::meta_instance{}, '.');
 
-    ASSERT_TRUE(any.valid());
+    ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<char>());
     ASSERT_EQ(any.to<char>(), '.');
 
@@ -608,14 +625,14 @@ TEST_F(Meta, MetaFuncStaticVoid) {
     ASSERT_FALSE(func->accept<int *>());
     ASSERT_FALSE(func->accept<double>());
 
-    data->set(nullptr, 128);
+    data->set(entt::meta_instance{}, 128);
 
-    ASSERT_EQ(data->get(nullptr).to<int>(), 128);
+    ASSERT_EQ(data->get(entt::meta_instance{}).to<int>(), 128);
 
-    auto any = func->invoke(nullptr);
+    auto any = func->invoke(entt::meta_instance{});
 
-    ASSERT_EQ(data->get(nullptr).to<int>(), 0);
-    ASSERT_FALSE(any.valid());
+    ASSERT_EQ(data->get(entt::meta_instance{}).to<int>(), 0);
+    ASSERT_FALSE(any);
 }
 
 TEST_F(Meta, MetaType) {
@@ -632,11 +649,6 @@ TEST_F(Meta, MetaType) {
     });
 
     ASSERT_NE(type->dtor(), nullptr);
-
-    type->dtor([type](auto *dtor) {
-        ASSERT_EQ(dtor, type->dtor());
-    });
-
     ASSERT_NE(type->data("value"), nullptr);
     ASSERT_EQ(type->data("identity"), nullptr);
 
@@ -656,7 +668,7 @@ TEST_F(Meta, MetaType) {
     ASSERT_EQ(any.to<char>(), 'c');
 
     helper_type<char>::value = '*';
-    type->destroy(any);
+    type->destroy(any.to<char>());
 
     ASSERT_EQ(helper_type<char>::value, 'c');
 
@@ -691,15 +703,16 @@ TEST_F(Meta, DefDestructor) {
 
     auto any = type->construct();
 
-    ASSERT_TRUE(any.valid());
+    ASSERT_TRUE(any);
     ASSERT_EQ(counter::value, 1);
 
-    type->destroy(any);
+    type->destroy(any.to<counter>());
 
     ASSERT_EQ(counter::value, 0);
 }
 
 TEST_F(Meta, BaseDerivedClasses) {
+    auto *abstract = entt::resolve<abstract_class>();
     auto *base = entt::resolve("base");
     auto *derived = entt::resolve("derived");
     derived_class instance;
@@ -707,28 +720,32 @@ TEST_F(Meta, BaseDerivedClasses) {
     ASSERT_NE(base, nullptr);
     ASSERT_NE(derived, nullptr);
 
-    ASSERT_EQ(base->func("square")->invoke(&instance, 2).to<int>(), 4);
-    ASSERT_EQ(derived->func("square")->invoke(&instance, 3).to<int>(), 9);
+    ASSERT_EQ(base->func("square")->invoke(instance, 2).to<int>(), 4);
+    ASSERT_EQ(derived->func("square")->invoke(instance, 3).to<int>(), 9);
 
-    ASSERT_EQ(base->func("div")->invoke(&instance, 10).to<int>(), 1);
-    ASSERT_EQ(derived->func("div")->invoke(&instance, 99).to<int>(), 1);
+    ASSERT_EQ(base->func("div")->invoke(instance, 10).to<int>(), 1);
+    ASSERT_EQ(derived->func("div")->invoke(instance, 99).to<int>(), 1);
 
     ASSERT_NE(derived->base("base"), nullptr);
 
-    derived->base([base](auto *curr) {
-        ASSERT_EQ(curr, base);
+    derived->base([base, abstract, derived](auto *curr) {
+        ASSERT_TRUE(curr->type() == base || curr->type() == abstract);
+        ASSERT_EQ(curr->parent(), derived);
     });
 
     auto any = derived->construct();
 
+    ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<derived_class>());
     ASSERT_TRUE(any.convertible<base_class>());
-    ASSERT_TRUE(any.valid());
-}
 
-// auto &obj = any.to<base_class>();
-// TODO data must search also through base classes (this way we have not to reflect members for derived types)
-// TODO func must search also through base classes (this way we have not to reflect members for derived types)
-// TODO test overriden functions (where overriden means from a meta point of view)
-// TODO test for properties, data and functions in base classes
-// ASSERT_EQ();
+    derived->data("value")->set(any.to<derived_class>(), base->data("value")->get(any.to<base_class>()).to<double>() + .1);
+
+    ASSERT_EQ(any.to<base_class>().value, .1);
+    ASSERT_EQ(any.to<derived_class>().value, .1);
+
+    ASSERT_NE(base->prop(properties::int_property), nullptr);
+    ASSERT_NE(derived->prop(properties::int_property), nullptr);
+    ASSERT_EQ(base->prop(properties::int_property), derived->prop(properties::int_property));
+    ASSERT_EQ(derived->prop(properties::int_property)->value().to<int>(), 42);
+}
