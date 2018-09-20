@@ -140,31 +140,30 @@ TEST_F(Meta, Fundamental) {
     auto any = type->construct();
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.convertible<char>());
-    ASSERT_TRUE(any.convertible<const char>());
-    ASSERT_TRUE(any.convertible<const char &>());
+    ASSERT_TRUE(any.instance().convertible<char>());
+    ASSERT_TRUE(any.instance().convertible<const char>());
+    ASSERT_TRUE(any.instance().convertible<const char &>());
     ASSERT_EQ(any.type(), entt::resolve<char>());
     ASSERT_EQ(any.type(), entt::resolve<const char>());
     ASSERT_EQ(any.type(), entt::resolve<const char &>());
     ASSERT_NE(any.type(), nullptr);
-    ASSERT_EQ(any.to<char>(), char{});
+    ASSERT_EQ(any.value<char>(), char{});
 
     any = type->construct('c');
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.convertible<char>());
-    ASSERT_TRUE(any.convertible<const char>());
-    ASSERT_TRUE(any.convertible<const char &>());
+    ASSERT_TRUE(any.instance().convertible<char>());
+    ASSERT_TRUE(any.instance().convertible<const char>());
+    ASSERT_TRUE(any.instance().convertible<const char &>());
     ASSERT_EQ(any.type(), entt::resolve<char>());
     ASSERT_EQ(any.type(), entt::resolve<const char>());
     ASSERT_EQ(any.type(), entt::resolve<const char &>());
     ASSERT_NE(any.type(), nullptr);
-    ASSERT_EQ(any.to<char>(), 'c');
+    ASSERT_EQ(any.value<char>(), 'c');
 
     ASSERT_EQ(helper_type<char>::value, char{});
 
-    entt::meta_instance inst{any.to<char>()};
-    type->destroy(inst);
+    type->destroy(any.instance());
 
     ASSERT_EQ(helper_type<char>::value, 'c');
 }
@@ -194,6 +193,11 @@ TEST_F(Meta, Struct) {
     ASSERT_EQ(type->func("vid"), nullptr);
 }
 
+TEST_F(Meta, MetaInstance) {
+    // TODO
+}
+
+
 TEST_F(Meta, MetaAny) {
     entt::meta_any empty{};
     const entt::meta_any &cempty = empty;
@@ -201,14 +205,10 @@ TEST_F(Meta, MetaAny) {
     ASSERT_FALSE(empty);
     ASSERT_FALSE(cempty);
     ASSERT_EQ(empty.type(), nullptr);
-    ASSERT_FALSE(empty.convertible<int>());
-    ASSERT_FALSE(cempty.convertible<void>());
-    ASSERT_EQ(cempty.data(), nullptr);
-    ASSERT_EQ(cempty.data<char>(), nullptr);
-    ASSERT_EQ(empty.data(), nullptr);
-    ASSERT_EQ(empty.data<char>(), nullptr);
-    ASSERT_EQ(static_cast<const void *>(cempty), nullptr);
-    ASSERT_EQ(static_cast<void *>(empty), nullptr);
+    ASSERT_FALSE(empty.instance().convertible<int>());
+    ASSERT_FALSE(cempty.instance().convertible<char>());
+    ASSERT_EQ(cempty.instance().data(), nullptr);
+    ASSERT_EQ(empty.instance().data(), nullptr);
     ASSERT_EQ(empty, cempty);
 
     entt::meta_any any{'c'};
@@ -220,15 +220,11 @@ TEST_F(Meta, MetaAny) {
     ASSERT_EQ(any.type(), cany.type());
     ASSERT_EQ(cany.type(), entt::resolve<char>());
     ASSERT_EQ(cany.type(), entt::resolve<char &>());
-    ASSERT_TRUE(any.convertible<char>());
-    ASSERT_EQ(cany.to<char>(), any.to<char>());
-    ASSERT_EQ(cany.to<char>(), 'c');
-    ASSERT_NE(cany.data(), nullptr);
-    ASSERT_NE(cany.data<char>(), nullptr);
-    ASSERT_NE(any.data(), nullptr);
-    ASSERT_NE(any.data<char>(), nullptr);
-    ASSERT_NE(static_cast<const void *>(cany), nullptr);
-    ASSERT_NE(static_cast<void *>(any), nullptr);
+    ASSERT_TRUE(any.instance().convertible<char>());
+    ASSERT_EQ(cany.value<char>(), any.value<char>());
+    ASSERT_EQ(cany.value<char>(), 'c');
+    ASSERT_NE(cany.instance().data(), nullptr);
+    ASSERT_NE(any.instance().data(), nullptr);
     ASSERT_EQ(any, cany);
 }
 
@@ -255,9 +251,9 @@ TEST_F(Meta, MetaAnyConvertible) {
     entt::meta_any any{derived_class{}};
     const entt::meta_any &cany = any;
 
-    const void *derived = cany.data<derived_class>();
-    const void *abstract = cany.data<abstract_class>();
-    const void *base = cany.data<base_class>();
+    const void *derived = cany.instance().to<derived_class>();
+    const void *abstract = cany.instance().to<abstract_class>();
+    const void *base = cany.instance().to<base_class>();
 
     ASSERT_TRUE(cany);
     ASSERT_TRUE(any);
@@ -265,13 +261,13 @@ TEST_F(Meta, MetaAnyConvertible) {
     ASSERT_TRUE(cany.convertible<base_class>());
     ASSERT_TRUE(any.convertible<abstract_class>());
 
-    ASSERT_EQ(cany.data<derived_class>(), derived);
-    ASSERT_EQ(cany.data<abstract_class>(), abstract);
-    ASSERT_EQ(cany.data<base_class>(), base);
+    ASSERT_EQ(cany.instance().to<derived_class>(), derived);
+    ASSERT_EQ(cany.instance().to<abstract_class>(), abstract);
+    ASSERT_EQ(cany.instance().to<base_class>(), base);
 
-    ASSERT_EQ(any.data<derived_class>(), derived);
-    ASSERT_EQ(any.data<abstract_class>(), abstract);
-    ASSERT_EQ(any.data<base_class>(), base);
+    ASSERT_EQ(any.instance().to<derived_class>(), derived);
+    ASSERT_EQ(any.instance().to<abstract_class>(), abstract);
+    ASSERT_EQ(any.instance().to<base_class>(), base);
 }
 
 TEST_F(Meta, MetaProp) {
@@ -281,20 +277,20 @@ TEST_F(Meta, MetaProp) {
     ASSERT_NE(type->prop(properties::int_property), nullptr);
     ASSERT_TRUE(type->prop(properties::bool_property)->key().convertible<properties>());
     ASSERT_TRUE(type->prop(properties::int_property)->key().convertible<properties>());
-    ASSERT_EQ(type->prop(properties::bool_property)->key().to<properties>(), properties::bool_property);
-    ASSERT_EQ(type->prop(properties::int_property)->key().to<properties>(), properties::int_property);
+    ASSERT_EQ(type->prop(properties::bool_property)->key().value<properties>(), properties::bool_property);
+    ASSERT_EQ(type->prop(properties::int_property)->key().value<properties>(), properties::int_property);
     ASSERT_TRUE(type->prop(properties::bool_property)->value().convertible<bool>());
     ASSERT_TRUE(type->prop(properties::int_property)->value().convertible<int>());
-    ASSERT_FALSE(type->prop(properties::bool_property)->value().to<bool>());
-    ASSERT_EQ(type->prop(properties::int_property)->value().to<int>(), 3);
+    ASSERT_FALSE(type->prop(properties::bool_property)->value().value<bool>());
+    ASSERT_EQ(type->prop(properties::int_property)->value().value<int>(), 3);
 
     type->prop([](auto *prop) {
         ASSERT_TRUE(prop->key().template convertible<properties>());
 
         if(prop->value().template convertible<bool>()) {
-            ASSERT_FALSE(prop->value().template to<bool>());
+            ASSERT_FALSE(prop->value().template value<bool>());
         } else if(prop->value().template convertible<int>()) {
-            ASSERT_EQ(prop->value().template to<int>(), 3);
+            ASSERT_EQ(prop->value().template value<int>(), 3);
         } else {
             FAIL();
         }
@@ -327,22 +323,22 @@ TEST_F(Meta, MetaCtor) {
     ASSERT_FALSE(ko.convertible<int>());
     ASSERT_TRUE(ok.convertible<char>());
     ASSERT_FALSE(ok.convertible<int>());
-    ASSERT_EQ(ok.to<char>(), 'c');
+    ASSERT_EQ(ok.value<char>(), 'c');
 
     ctor = entt::resolve<char>()->ctor<>();
 
     ASSERT_NE(ctor->prop(properties::bool_property), nullptr);
     ASSERT_TRUE(ctor->prop(properties::bool_property)->key().convertible<properties>());
-    ASSERT_EQ(ctor->prop(properties::bool_property)->key().to<properties>(), properties::bool_property);
+    ASSERT_EQ(ctor->prop(properties::bool_property)->key().value<properties>(), properties::bool_property);
     ASSERT_TRUE(ctor->prop(properties::bool_property)->value().convertible<bool>());
-    ASSERT_TRUE(ctor->prop(properties::bool_property)->value().to<bool>());
+    ASSERT_TRUE(ctor->prop(properties::bool_property)->value().value<bool>());
     ASSERT_EQ(ctor->prop(properties::int_property), nullptr);
 
     ctor->prop([](auto *prop) {
         ASSERT_TRUE(prop->key().template convertible<properties>());
-        ASSERT_EQ(prop->key().template to<properties>(), properties::bool_property);
+        ASSERT_EQ(prop->key().template value<properties>(), properties::bool_property);
         ASSERT_TRUE(prop->value().template convertible<bool>());
-        ASSERT_TRUE(prop->value().template to<bool>());
+        ASSERT_TRUE(prop->value().template value<bool>());
     });
 }
 
@@ -361,16 +357,16 @@ TEST_F(Meta, MetaDtor) {
 
     ASSERT_NE(dtor->prop(properties::bool_property), nullptr);
     ASSERT_TRUE(dtor->prop(properties::bool_property)->key().convertible<properties>());
-    ASSERT_EQ(dtor->prop(properties::bool_property)->key().to<properties>(), properties::bool_property);
+    ASSERT_EQ(dtor->prop(properties::bool_property)->key().value<properties>(), properties::bool_property);
     ASSERT_TRUE(dtor->prop(properties::bool_property)->value().convertible<bool>());
-    ASSERT_FALSE(dtor->prop(properties::bool_property)->value().to<bool>());
+    ASSERT_FALSE(dtor->prop(properties::bool_property)->value().value<bool>());
     ASSERT_EQ(dtor->prop(properties::int_property), nullptr);
 
     dtor->prop([](auto *prop) {
         ASSERT_TRUE(prop->key().template convertible<properties>());
-        ASSERT_EQ(prop->key().template to<properties>(), properties::bool_property);
+        ASSERT_EQ(prop->key().template value<properties>(), properties::bool_property);
         ASSERT_TRUE(prop->value().template convertible<bool>());
-        ASSERT_FALSE(prop->value().template to<bool>());
+        ASSERT_FALSE(prop->value().template value<bool>());
     });
 }
 
@@ -406,7 +402,7 @@ TEST_F(Meta, MetaData) {
 
     ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<double>());
-    ASSERT_EQ(any.to<double>(), 3.);
+    ASSERT_EQ(any.value<double>(), 3.);
 
     ASSERT_EQ(data->prop(properties::int_property), nullptr);
     ASSERT_EQ(data->prop(properties::bool_property), nullptr);
@@ -438,20 +434,20 @@ TEST_F(Meta, MetaDataStatic) {
 
     ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<char>());
-    ASSERT_EQ(any.to<char>(), '#');
+    ASSERT_EQ(any.value<char>(), '#');
 
     ASSERT_NE(data->prop(properties::int_property), nullptr);
     ASSERT_TRUE(data->prop(properties::int_property)->key().convertible<properties>());
-    ASSERT_EQ(data->prop(properties::int_property)->key().to<properties>(), properties::int_property);
+    ASSERT_EQ(data->prop(properties::int_property)->key().value<properties>(), properties::int_property);
     ASSERT_TRUE(data->prop(properties::int_property)->value().convertible<int>());
-    ASSERT_EQ(data->prop(properties::int_property)->value().to<int>(), 1);
+    ASSERT_EQ(data->prop(properties::int_property)->value().value<int>(), 1);
     ASSERT_EQ(data->prop(properties::bool_property), nullptr);
 
     data->prop([](auto *prop) {
         ASSERT_TRUE(prop->key().template convertible<properties>());
-        ASSERT_EQ(prop->key().template to<properties>(), properties::int_property);
+        ASSERT_EQ(prop->key().template value<properties>(), properties::int_property);
         ASSERT_TRUE(prop->value().template convertible<int>());
-        ASSERT_EQ(prop->value().template to<int>(), 1);
+        ASSERT_EQ(prop->value().template value<int>(), 1);
     });
 }
 
@@ -489,7 +485,7 @@ TEST_F(Meta, MetaFunc) {
 
     ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<int>());
-    ASSERT_EQ(any.to<int>(), 4);
+    ASSERT_EQ(any.value<int>(), 4);
 
     ASSERT_EQ(func->prop(properties::int_property), nullptr);
     ASSERT_EQ(func->prop(properties::bool_property), nullptr);
@@ -546,12 +542,12 @@ TEST_F(Meta, MetaFuncVoid) {
 
     data->set(derived, 1.2);
 
-    ASSERT_EQ(data->get(derived).to<double>(), 1.2);
+    ASSERT_EQ(data->get(derived).value<double>(), 1.2);
 
     auto any = func->invoke(derived);
     cfunc->invoke(derived, 0, 'c');
 
-    ASSERT_EQ(data->get(derived).to<double>(), 0.);
+    ASSERT_EQ(data->get(derived).value<double>(), 0.);
     ASSERT_FALSE(any);
 }
 
@@ -588,20 +584,20 @@ TEST_F(Meta, MetaFuncStatic) {
 
     ASSERT_TRUE(any);
     ASSERT_TRUE(any.convertible<char>());
-    ASSERT_EQ(any.to<char>(), '.');
+    ASSERT_EQ(any.value<char>(), '.');
 
     ASSERT_NE(func->prop(properties::int_property), nullptr);
     ASSERT_TRUE(func->prop(properties::int_property)->key().convertible<properties>());
-    ASSERT_EQ(func->prop(properties::int_property)->key().to<properties>(), properties::int_property);
+    ASSERT_EQ(func->prop(properties::int_property)->key().value<properties>(), properties::int_property);
     ASSERT_TRUE(func->prop(properties::int_property)->value().convertible<int>());
-    ASSERT_EQ(func->prop(properties::int_property)->value().to<int>(), 99);
+    ASSERT_EQ(func->prop(properties::int_property)->value().value<int>(), 99);
     ASSERT_EQ(func->prop(properties::bool_property), nullptr);
 
     func->prop([](auto *prop) {
         ASSERT_TRUE(prop->key().template convertible<properties>());
-        ASSERT_EQ(prop->key().template to<properties>(), properties::int_property);
+        ASSERT_EQ(prop->key().template value<properties>(), properties::int_property);
         ASSERT_TRUE(prop->value().template convertible<int>());
-        ASSERT_EQ(prop->value().template to<int>(), 99);
+        ASSERT_EQ(prop->value().template value<int>(), 99);
     });
 }
 
@@ -629,11 +625,11 @@ TEST_F(Meta, MetaFuncStaticVoid) {
 
     data->set(entt::meta_instance{}, 128);
 
-    ASSERT_EQ(data->get(entt::meta_instance{}).to<int>(), 128);
+    ASSERT_EQ(data->get(entt::meta_instance{}).value<int>(), 128);
 
     auto any = func->invoke(entt::meta_instance{});
 
-    ASSERT_EQ(data->get(entt::meta_instance{}).to<int>(), 0);
+    ASSERT_EQ(data->get(entt::meta_instance{}).value<int>(), 0);
     ASSERT_FALSE(any);
 }
 
@@ -667,10 +663,10 @@ TEST_F(Meta, MetaType) {
 
     auto any = type->construct('c');
 
-    ASSERT_EQ(any.to<char>(), 'c');
+    ASSERT_EQ(any.value<char>(), 'c');
 
     helper_type<char>::value = '*';
-    type->destroy(any.to<char>());
+    type->destroy(any.value<char>());
 
     ASSERT_EQ(helper_type<char>::value, 'c');
 
@@ -678,20 +674,20 @@ TEST_F(Meta, MetaType) {
     ASSERT_NE(type->prop(properties::int_property), nullptr);
     ASSERT_TRUE(type->prop(properties::bool_property)->key().convertible<properties>());
     ASSERT_TRUE(type->prop(properties::int_property)->key().convertible<properties>());
-    ASSERT_EQ(type->prop(properties::bool_property)->key().to<properties>(), properties::bool_property);
-    ASSERT_EQ(type->prop(properties::int_property)->key().to<properties>(), properties::int_property);
+    ASSERT_EQ(type->prop(properties::bool_property)->key().value<properties>(), properties::bool_property);
+    ASSERT_EQ(type->prop(properties::int_property)->key().value<properties>(), properties::int_property);
     ASSERT_TRUE(type->prop(properties::bool_property)->value().convertible<bool>());
     ASSERT_TRUE(type->prop(properties::int_property)->value().convertible<int>());
-    ASSERT_FALSE(type->prop(properties::bool_property)->value().to<bool>());
-    ASSERT_EQ(type->prop(properties::int_property)->value().to<int>(), 3);
+    ASSERT_FALSE(type->prop(properties::bool_property)->value().value<bool>());
+    ASSERT_EQ(type->prop(properties::int_property)->value().value<int>(), 3);
 
     type->prop([](auto *prop) {
         ASSERT_TRUE(prop->key().template convertible<properties>());
 
         if(prop->value().template convertible<bool>()) {
-            ASSERT_FALSE(prop->value().template to<bool>());
+            ASSERT_FALSE(prop->value().template value<bool>());
         } else if(prop->value().template convertible<int>()) {
-            ASSERT_EQ(prop->value().template to<int>(), 3);
+            ASSERT_EQ(prop->value().template value<int>(), 3);
         } else {
             FAIL();
         }
@@ -708,7 +704,7 @@ TEST_F(Meta, DefDestructor) {
     ASSERT_TRUE(any);
     ASSERT_EQ(counter::value, 1);
 
-    type->destroy(any.to<counter>());
+    type->destroy(any.value<counter>());
 
     ASSERT_EQ(counter::value, 0);
 }
@@ -722,11 +718,11 @@ TEST_F(Meta, BaseDerivedClasses) {
     ASSERT_NE(base, nullptr);
     ASSERT_NE(derived, nullptr);
 
-    ASSERT_EQ(base->func("square")->invoke(instance, 2).to<int>(), 4);
-    ASSERT_EQ(derived->func("square")->invoke(instance, 3).to<int>(), 9);
+    ASSERT_EQ(base->func("square")->invoke(instance, 2).value<int>(), 4);
+    ASSERT_EQ(derived->func("square")->invoke(instance, 3).value<int>(), 9);
 
-    ASSERT_EQ(base->func("div")->invoke(instance, 10).to<int>(), 1);
-    ASSERT_EQ(derived->func("div")->invoke(instance, 99).to<int>(), 1);
+    ASSERT_EQ(base->func("div")->invoke(instance, 10).value<int>(), 1);
+    ASSERT_EQ(derived->func("div")->invoke(instance, 99).value<int>(), 1);
 
     ASSERT_NE(derived->base("base"), nullptr);
 
@@ -741,13 +737,13 @@ TEST_F(Meta, BaseDerivedClasses) {
     ASSERT_TRUE(any.convertible<derived_class>());
     ASSERT_TRUE(any.convertible<base_class>());
 
-    derived->data("value")->set(any.to<derived_class>(), base->data("value")->get(any.to<base_class>()).to<double>() + .1);
+    derived->data("value")->set(any.instance(), base->data("value")->get(any.instance()).value<double>() + .1);
 
-    ASSERT_EQ(any.to<base_class>().value, .1);
-    ASSERT_EQ(any.to<derived_class>().value, .1);
+    ASSERT_EQ(any.value<base_class>().value, .1);
+    ASSERT_EQ(any.value<derived_class>().value, .1);
 
     ASSERT_NE(base->prop(properties::int_property), nullptr);
     ASSERT_NE(derived->prop(properties::int_property), nullptr);
     ASSERT_EQ(base->prop(properties::int_property), derived->prop(properties::int_property));
-    ASSERT_EQ(derived->prop(properties::int_property)->value().to<int>(), 42);
+    ASSERT_EQ(derived->prop(properties::int_property)->value().value<int>(), 42);
 }

@@ -342,12 +342,10 @@ public:
             &func_type<Func>::arg,
             &func_type<Func>::accept,
             [](meta_instance instance, const meta_any *any) {
-                assert(instance.convertible<Type>());
-                return internal::invoke<Func>(std::as_const(instance).to<Type>(), any, std::make_index_sequence<func_type<Func>::size>{});
+                return internal::invoke<Func>(std::as_const(instance), any, std::make_index_sequence<func_type<Func>::size>{});
             },
             [](meta_instance instance, const meta_any *any) {
-                assert(instance.convertible<Type>());
-                return internal::invoke<Func>(instance.to<Type>(), any, std::make_index_sequence<func_type<Func>::size>{});
+                return internal::invoke<Func>(instance, any, std::make_index_sequence<func_type<Func>::size>{});
             },
             []() {
                 static meta_func meta{&node};

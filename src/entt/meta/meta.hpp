@@ -240,7 +240,7 @@ auto iterate(Op op, const meta_type_node *node) ENTT_NOEXCEPT
 }
 
 
-// TODO keep?
+// TODO move into meta_instance?
 template<typename Type>
 const Type * convert(const void *instance, const meta_type_node *node) {
     const void *conv = nullptr;
@@ -248,7 +248,7 @@ const Type * convert(const void *instance, const meta_type_node *node) {
     if(node == internal::meta_info<Type>::resolve()) {
         conv = instance;
     } else {
-        auto *base = node->base;
+        auto *base = node ? node->base : nullptr;
 
         while(base && !conv) {
             conv = convert<Type>(base->conv(instance), base->type());
@@ -260,14 +260,14 @@ const Type * convert(const void *instance, const meta_type_node *node) {
 }
 
 
-// TODO keep?
+// TODO move into meta_instance?
 template<typename Type>
 bool convertible(const meta_type_node *node) ENTT_NOEXCEPT {
     const auto *type = internal::meta_info<Type>::resolve();
 
-    return (node == type) || internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
+    return node && ((node == type) || internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
         return node->type() == type;
-    }, node);
+    }, node));
 }
 
 
@@ -292,20 +292,20 @@ struct meta_instance final {
      * TODO
      */
     meta_instance()
-        : type{nullptr},
-          object{nullptr}
+        : node{nullptr},
+          instance{nullptr}
     {}
 
     /**
      * @brief TODO
      *
      * @tparam Type TODO
-     * @param object TODO
+     * @param instance TODO
      */
     template<typename Type, typename = std::enable_if_t<!std::is_same_v<std::decay_t<Type>, meta_instance>>>
-    meta_instance(Type &&object)
-        : type{internal::meta_info<std::decay_t<Type>>::resolve()},
-          object{&object}
+    meta_instance(Type &&instance)
+        : node{internal::meta_info<std::decay_t<Type>>::resolve()},
+          instance{&instance}
     {}
 
     /**
@@ -357,7 +357,7 @@ struct meta_instance final {
      */
     template<typename Type>
     inline bool convertible() const ENTT_NOEXCEPT {
-        return !type || internal::convertible<Type>(type);
+        return internal::convertible<Type>(node);
     }
 
     /**
@@ -370,7 +370,8 @@ struct meta_instance final {
      */
     template<typename Type>
     inline const Type * to() const ENTT_NOEXCEPT {
-        return type ? internal::convert<Type>(object, type) : nullptr;
+        assert(convertible<Type>());
+        return internal::convert<Type>(instance, node);
     }
 
     /**
@@ -393,8 +394,8 @@ struct meta_instance final {
      *
      * @return TODO
      */
-    inline const void * instance() const ENTT_NOEXCEPT {
-        return object;
+    inline const void * data() const ENTT_NOEXCEPT {
+        return instance;
     }
 
     /**
@@ -404,8 +405,8 @@ struct meta_instance final {
      *
      * @return TODO
      */
-    inline void * instance() ENTT_NOEXCEPT {
-        return const_cast<void *>(const_cast<const meta_instance *>(this)->instance());
+    inline void * data() ENTT_NOEXCEPT {
+        return const_cast<void *>(const_cast<const meta_instance *>(this)->data());
     }
 
     /**
@@ -416,12 +417,12 @@ struct meta_instance final {
      * @return TODO
      */
     inline explicit operator bool() const ENTT_NOEXCEPT {
-        return object;
+        return instance;
     }
 
 private:
-    const internal::meta_type_node *type;
-    void *object;
+    const internal::meta_type_node *node;
+    void *instance;
 };
 
 
@@ -461,7 +462,7 @@ public:
         : storage{},
           direct{nullptr},
           destroy{nullptr},
-          underlying{nullptr},
+          node{nullptr},
           comparator{nullptr}
     {}
 
@@ -481,7 +482,7 @@ public:
     template<typename Type, typename = std::enable_if_t<!std::is_same_v<std::decay_t<Type>, meta_any>>>
     meta_any(Type &&type) {
         using actual_type = std::decay_t<Type>;
-        underlying = internal::meta_info<Type>::resolve();
+        node = internal::meta_info<Type>::resolve();
 
         comparator = [](const void *lhs, const void *rhs) {
             return compare(0, *static_cast<const actual_type *>(lhs), *static_cast<const actual_type *>(rhs));
@@ -527,7 +528,7 @@ public:
         : storage{},
           direct{nullptr},
           destroy{other.destroy},
-          underlying{other.underlying},
+          node{other.node},
           comparator{other.comparator}
     {
         std::memcpy(&storage, &other.storage, sizeof(storage_type));
@@ -559,7 +560,7 @@ public:
             std::memcpy(&storage, &tmp.storage, sizeof(storage_type));
             direct = (tmp.direct == &tmp.storage ? &storage : *reinterpret_cast<void **>(&storage));
             std::swap(destroy, tmp.destroy);
-            std::swap(underlying, tmp.underlying);
+            std::swap(node, tmp.node);
             std::swap(comparator, tmp.comparator);
         }
 
@@ -571,136 +572,57 @@ public:
      * @return The meta type of the underlying object, if any.
      */
     meta_type * type() const ENTT_NOEXCEPT {
-        return underlying ? underlying->meta() : nullptr;
+        return node ? node->meta() : nullptr;
     }
 
     /**
-     * @brief Checks if a meta any is convertible to a given type.
-     * @tparam Type Type to which to convert the underlying object.
-     * @return True if the underlying object is convertible to the given type,
-     * false otherwise.
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @return TODO
+     */
+    meta_instance instance() const ENTT_NOEXCEPT {
+        return node ? node->instance(direct) : meta_instance{};
+    }
+
+    /**
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @tparam Type TODO
+     * @return TODO
      */
     template<typename Type>
-    bool convertible() const ENTT_NOEXCEPT {
-        const auto *type = internal::meta_info<Type>::resolve();
-
-        // TODO review
-        return underlying && ((underlying == type) || internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
-            return node->type() == type;
-        }, underlying));
+    inline bool convertible() const ENTT_NOEXCEPT {
+        return instance().convertible<Type>();
     }
 
     /**
-     * @brief Converts the underlying object to a given type and returns it.
+     * @brief TODO
      *
-     * @warning
-     * The type of the underlying object must be convertible to the given one.
-     * Otherwise, invoking this function results in an undefined behavior.<br/>
-     * An assertion will abort the execution at runtime in debug mode if the
-     * underlying type isn't convertible to the given one.
+     * TODO
      *
-     * @tparam Type Type to which to convert the underlying object.
-     * @return A reference to the contained object.
+     * @tparam Type TODO
+     * @return TODO
      */
     template<typename Type>
-    inline const Type & to() const ENTT_NOEXCEPT {
-        assert(*this && convertible<Type>());
-        return *data<Type>();
+    const Type & value() const ENTT_NOEXCEPT {
+        return *instance().to<Type>();
     }
 
     /**
-     * @brief Converts the underlying object to a given type and returns it.
+     * @brief TODO
      *
-     * @warning
-     * The type of the underlying object must be convertible to the given one.
-     * Otherwise, invoking this function results in an undefined behavior.<br/>
-     * An assertion will abort the execution at runtime in debug mode if the
-     * underlying type isn't convertible to the given one.
+     * TODO
      *
-     * @tparam Type Type to which to convert the underlying object.
-     * @return A reference to the contained object.
+     * @tparam Type TODO
+     * @return TODO
      */
     template<typename Type>
-    inline Type & to() ENTT_NOEXCEPT {
-        return const_cast<Type &>(const_cast<const meta_any *>(this)->to<Type>());
-    }
-
-    /**
-     * @brief Converts the underlying object to a given type and returns it.
-     *
-     * @warning
-     * In case of an empty container, a null pointer is returned. In all the
-     * other cases, the type of the underlying object must be convertible to the
-     * given one. Otherwise, invoking this function results in an undefined
-     * behavior.<br/>
-     * An assertion will abort the execution at runtime in debug mode if the
-     * underlying type isn't convertible to the given one.
-     *
-     * @tparam Type Type to which to convert the underlying object.
-     * @return A pointer to the contained object, if any.
-     */
-    template<typename Type>
-    inline const Type * data() const ENTT_NOEXCEPT {
-        assert(!*this || convertible<Type>());
-        const auto *type = internal::meta_info<Type>::resolve();
-
-        // TODO wrong (in case of deep hierarchies, there is a jump with a wrong cast)
-        const auto instance = (!underlying || underlying == type) ? direct : internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
-            return node->type() == type;
-        }, underlying)->convert(direct);
-
-        return static_cast<Type *>(instance);
-    }
-
-    /**
-     * @brief Converts the underlying object to a given type and returns it.
-     *
-     * @warning
-     * In case of an empty container, a null pointer is returned. In all the
-     * other cases, the type of the underlying object must be convertible to the
-     * given one. Otherwise, invoking this function results in an undefined
-     * behavior.<br/>
-     * An assertion will abort the execution at runtime in debug mode if the
-     * underlying type isn't convertible to the given one.
-     *
-     * @tparam Type Type to which to convert the underlying object.
-     * @return A pointer to the contained object, if any.
-     */
-    template<typename Type>
-    inline Type * data() ENTT_NOEXCEPT {
-        return const_cast<Type *>(const_cast<const meta_any *>(this)->data<Type>());
-    }
-
-    /**
-     * @brief Returns an opaque pointer to the underlying object.
-     * @return An opaque pointer to the contained object, if any.
-     */
-    inline const void * data() const ENTT_NOEXCEPT {
-        return direct;
-    }
-
-    /**
-     * @brief Returns an opaque pointer to the underlying object.
-     * @return An opaque pointer to the contained object, if any.
-     */
-    inline void * data() ENTT_NOEXCEPT {
-        return const_cast<void *>(const_cast<const meta_any *>(this)->data());
-    }
-
-    /**
-     * @brief Returns an opaque pointer to the underlying object.
-     * @return An opaque pointer to the contained object, if any.
-     */
-    inline operator const void *() const ENTT_NOEXCEPT {
-        return direct;
-    }
-
-    /**
-     * @brief Returns an opaque pointer to the underlying object.
-     * @return An opaque pointer to the contained object, if any.
-     */
-    inline operator void *() ENTT_NOEXCEPT {
-        return const_cast<void *>(const_cast<const meta_any *>(this)->data());
+    Type & value() ENTT_NOEXCEPT {
+        return const_cast<Type &>(const_cast<const meta_any *>(this)->value<Type>());
     }
 
     /**
@@ -718,16 +640,27 @@ public:
      * otherwise.
      */
     inline bool operator==(const meta_any &other) const ENTT_NOEXCEPT {
-        return (!direct && !other.direct) || (direct && other.direct && underlying == other.underlying && comparator(direct, other.direct));
+        return (!direct && !other.direct) || (direct && other.direct && node == other.node && comparator(direct, other.direct));
     }
 
 private:
     storage_type storage;
     void *direct;
     destroy_fn_type destroy;
-    internal::meta_type_node *underlying;
+    internal::meta_type_node *node;
     compare_fn_type comparator;
 };
+
+
+/**
+ * @brief TODO
+ * @param lhs TODO
+ * @param rhs TODO
+ * @return TODO
+ */
+inline bool operator!=(const meta_any &lhs, const meta_any &rhs) ENTT_NOEXCEPT {
+    return !(lhs == rhs);
+}
 
 
 /**
@@ -1614,7 +1547,7 @@ void destroy([[maybe_unused]] meta_instance instance) {
 
 template<typename Type, typename... Args, std::size_t... Indexes>
 meta_any construct(const meta_any * const any, std::index_sequence<Indexes...>) {
-    return meta_any{Type{(any+Indexes)->to<std::decay_t<Args>>()...}};
+    return meta_any{Type{(any+Indexes)->value<std::decay_t<Args>>()...}};
 }
 
 
@@ -1624,9 +1557,9 @@ void setter([[maybe_unused]] meta_instance instance, [[maybe_unused]] const meta
         assert(false);
     } else if constexpr(std::is_member_object_pointer_v<decltype(Data)>) {
         assert(instance.convertible<Type>());
-        instance.to<Type>()->*Data = any.to<std::decay_t<decltype(std::declval<Type>().*Data)>>();
+        instance.to<Type>()->*Data = any.value<std::decay_t<decltype(std::declval<Type>().*Data)>>();
     } else {
-        *Data = any.to<std::decay_t<decltype(*Data)>>();
+        *Data = any.value<std::decay_t<decltype(*Data)>>();
     }
 }
 
@@ -1644,14 +1577,14 @@ meta_any getter([[maybe_unused]] meta_instance instance) {
 
 template<auto Func, std::size_t... Indexes>
 std::enable_if_t<std::is_function_v<std::remove_pointer_t<decltype(Func)>>, meta_any>
-invoke(const void *, const meta_any *any, std::index_sequence<Indexes...>) {
+invoke(const meta_instance &, const meta_any *any, std::index_sequence<Indexes...>) {
     using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Func), Func>>;
     meta_any result{};
 
     if constexpr(std::is_void_v<typename helper_type::return_type>) {
-        (*Func)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
+        (*Func)((any+Indexes)->value<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
     } else {
-        result = meta_any{(*Func)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
+        result = meta_any{(*Func)((any+Indexes)->value<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
     }
 
     return result;
@@ -1660,17 +1593,18 @@ invoke(const void *, const meta_any *any, std::index_sequence<Indexes...>) {
 
 template<auto Member, std::size_t... Indexes>
 std::enable_if_t<std::is_member_function_pointer_v<decltype(Member)>, meta_any>
-invoke([[maybe_unused]] const void *instance, [[maybe_unused]] const meta_any *any, std::index_sequence<Indexes...>) {
+invoke([[maybe_unused]] const meta_instance &instance, [[maybe_unused]] const meta_any *any, std::index_sequence<Indexes...>) {
     using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Member), Member>>;
 
     if constexpr(helper_type::is_const) {
-        const auto *clazz = static_cast<const typename helper_type::class_type *>(instance);
+        assert(instance.convertible<typename helper_type::class_type>());
+        const auto *clazz = instance.to<typename helper_type::class_type>();
 
         if constexpr(std::is_void_v<typename helper_type::return_type>) {
-            (clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
+            (clazz->*Member)((any+Indexes)->value<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
             return meta_any{};
         } else {
-            return meta_any{(clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
+            return meta_any{(clazz->*Member)((any+Indexes)->value<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
         }
     } else {
         assert(false);
@@ -1681,15 +1615,16 @@ invoke([[maybe_unused]] const void *instance, [[maybe_unused]] const meta_any *a
 
 template<auto Member, std::size_t... Indexes>
 std::enable_if_t<std::is_member_function_pointer_v<decltype(Member)>, meta_any>
-invoke(void *instance, const meta_any *any, std::index_sequence<Indexes...>) {
+invoke(meta_instance &instance, const meta_any *any, std::index_sequence<Indexes...>) {
     using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Member), Member>>;
-    auto *clazz = static_cast<typename helper_type::class_type *>(instance);
+    assert(instance.convertible<typename helper_type::class_type>());
+    auto *clazz = instance.to<typename helper_type::class_type>();
 
     if constexpr(std::is_void_v<typename helper_type::return_type>) {
-        (clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
+        (clazz->*Member)((any+Indexes)->value<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
         return meta_any{};
     } else {
-        return meta_any{(clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
+        return meta_any{(clazz->*Member)((any+Indexes)->value<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
     }
 }
 
