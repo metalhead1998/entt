@@ -90,7 +90,7 @@ class meta_factory {
             name,
             internal::meta_info<>::type,
             properties<Type>(std::forward<Property>(property)...),
-            &internal::instance<Type>,
+            &internal::handle<Type>,
             &internal::destroy<Type>,
             []() {
                 static meta_type meta{&node};
@@ -249,9 +249,9 @@ public:
         static internal::meta_dtor_node node{
             properties<std::integral_constant<decltype(Func), Func>>(std::forward<Property>(property)...),
             &internal::meta_info<Type>::resolve,
-            [](meta_instance instance) {
-                assert(instance.convertible<Type>());
-                (*Func)(*instance.to<Type>());
+            [](meta_handle handle) {
+                assert(handle.convertible<Type>());
+                (*Func)(*handle.to<Type>());
             },
             []() {
                 static meta_dtor meta{&node};
@@ -341,11 +341,11 @@ public:
             &internal::meta_info<typename func_type<Func>::return_type>::resolve,
             &func_type<Func>::arg,
             &func_type<Func>::accept,
-            [](meta_instance instance, const meta_any *any) {
-                return internal::invoke<Func>(std::as_const(instance), any, std::make_index_sequence<func_type<Func>::size>{});
+            [](meta_handle handle, const meta_any *any) {
+                return internal::invoke<Func>(std::as_const(handle), any, std::make_index_sequence<func_type<Func>::size>{});
             },
-            [](meta_instance instance, const meta_any *any) {
-                return internal::invoke<Func>(instance, any, std::make_index_sequence<func_type<Func>::size>{});
+            [](meta_handle handle, const meta_any *any) {
+                return internal::invoke<Func>(handle, any, std::make_index_sequence<func_type<Func>::size>{});
             },
             []() {
                 static meta_func meta{&node};

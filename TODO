@@ -17,6 +17,7 @@
 * meta: add support for base classes + tests + doc (.md) + multiple base classes
 * meta: add support for enums
 * meta: can we do more on "convertibles"?
+* meta: should accept consider "convertibles"?
 * registry::probe<component>(entt) (returns a component * if entt has the component, nullptr otherwise)
 * hashed string: add implicit check on construction for uniqueness (optional)
 * add a note about multithreading support to the README file
