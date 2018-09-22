@@ -1558,28 +1558,6 @@ invoke(const meta_handle &, const meta_any *any, std::index_sequence<Indexes...>
 
 template<auto Member, std::size_t... Indexes>
 std::enable_if_t<std::is_member_function_pointer_v<decltype(Member)>, meta_any>
-invoke([[maybe_unused]] const meta_handle &handle, [[maybe_unused]] const meta_any *any, std::index_sequence<Indexes...>) {
-    using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Member), Member>>;
-
-    if constexpr(helper_type::is_const) {
-        assert(handle.convertible<typename helper_type::class_type>());
-        const auto *clazz = handle.to<typename helper_type::class_type>();
-
-        if constexpr(std::is_void_v<typename helper_type::return_type>) {
-            (clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
-            return meta_any{};
-        } else {
-            return meta_any{(clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
-        }
-    } else {
-        assert(false);
-        return meta_any{};
-    }
-}
-
-
-template<auto Member, std::size_t... Indexes>
-std::enable_if_t<std::is_member_function_pointer_v<decltype(Member)>, meta_any>
 invoke(meta_handle &handle, const meta_any *any, std::index_sequence<Indexes...>) {
     using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Member), Member>>;
     assert(handle.convertible<typename helper_type::class_type>());
