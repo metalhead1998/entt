@@ -278,9 +278,14 @@ inline bool convertible(const internal::meta_type_node *node) ENTT_NOEXCEPT {
 
 
 /**
- * @brief TODO
+ * @brief Meta handle object.
  *
- * TODO
+ * A meta handle is an opaque pointer to an instance of any type.
+ *
+ * A handle doesn't perform copies and isn't responsible for the contained
+ * object. It doesn't prolong the lifetime of the pointed instance. Users are
+ * responsible for ensuring that the target object remains alive for the entire
+ * interval of use of the handle.
  */
 struct meta_handle final {
     /*! @brief Default constructor. */
@@ -290,65 +295,29 @@ struct meta_handle final {
     {}
 
     /**
-     * @brief TODO
-     *
-     * @tparam Type TODO
-     * @param instance TODO
-     */
-    template<typename Type>
-    meta_handle(Type *instance) ENTT_NOEXCEPT
-        : node{internal::meta_info<std::decay_t<Type>>::resolve()},
-          instance{instance}
-    {}
-
-    /**
-     * @brief TODO
-     *
-     * @tparam Type TODO
-     * @param instance TODO
+     * @brief Constructs a meta handle from a given instance.
+     * @tparam Type Type of object to use to initialize the handle.
+     * @param instance A reference to an object to use to initialize the handle.
      */
     template<typename Type, typename = std::enable_if_t<!std::is_same_v<std::decay_t<Type>, meta_handle>>>
     meta_handle(Type &&instance) ENTT_NOEXCEPT
-        : meta_handle{&instance}
+        : node{internal::meta_info<Type>::resolve()},
+          instance{&instance}
     {}
 
-    /**
-     * @brief TODO
-     *
-     * TODO
-     */
+    /*! @brief Default destructor. */
     ~meta_handle() ENTT_NOEXCEPT = default;
 
-    /**
-     * @brief TODO
-     *
-     * TODO
-     */
+    /*! @brief Default copy constructor. */
     meta_handle(const meta_handle &) ENTT_NOEXCEPT = default;
 
-    /**
-     * @brief TODO
-     *
-     * TODO
-     */
+    /*! @brief Default move constructor. */
     meta_handle(meta_handle &&) ENTT_NOEXCEPT = default;
 
-    /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @return TODO
-     */
+    /*! @brief Default copy assignment operator. @return This handle. */
     meta_handle & operator=(const meta_handle &) ENTT_NOEXCEPT = default;
 
-    /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @return TODO
-     */
+    /*! @brief Default move assignment operator. @return This handle. */
     meta_handle & operator=(meta_handle &&) ENTT_NOEXCEPT = default;
 
     /**
@@ -360,12 +329,9 @@ struct meta_handle final {
     }
 
     /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @tparam Type TODO
-     * @return TODO
+     * @brief Checks if an instance can be converted to a given type.
+     * @tparam Type Type to which to convert the instance.
+     * @return True if the conversion is viable, false otherwise.
      */
     template<typename Type>
     inline bool convertible() const ENTT_NOEXCEPT {
@@ -373,12 +339,18 @@ struct meta_handle final {
     }
 
     /**
-     * @brief TODO
+     * @brief Converts an instance to a given type.
      *
-     * TODO
+     * The type of the instance must be such that the conversion is possible.
      *
-     * @tparam Type TODO
-     * @return TODO
+     * @warning
+     * Attempting to perform a conversion that isn't viable results in undefined
+     * behavior.<br/>
+     * An assertion will abort the execution at runtime in debug mode in case
+     * the conversion is not feasible.
+     *
+     * @tparam Type Type to which to convert the instance.
+     * @return A pointer to the contained instance.
      */
     template<typename Type>
     inline const Type * to() const ENTT_NOEXCEPT {
@@ -387,12 +359,18 @@ struct meta_handle final {
     }
 
     /**
-     * @brief TODO
+     * @brief Converts an instance to a given type.
      *
-     * TODO
+     * The type of the instance must be such that the conversion is possible.
      *
-     * @tparam Type TODO
-     * @return TODO
+     * @warning
+     * Attempting to perform a conversion that isn't viable results in undefined
+     * behavior.<br/>
+     * An assertion will abort the execution at runtime in debug mode in case
+     * the conversion is not feasible.
+     *
+     * @tparam Type Type to which to convert the instance.
+     * @return A pointer to the contained instance.
      */
     template<typename Type>
     inline Type * to() ENTT_NOEXCEPT {
@@ -400,33 +378,24 @@ struct meta_handle final {
     }
 
     /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @return TODO
+     * @brief Returns an opaque pointer to the contained instance.
+     * @return An opaque pointer the contained instance, if any.
      */
     inline const void * data() const ENTT_NOEXCEPT {
         return instance;
     }
 
     /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @return TODO
+     * @brief Returns an opaque pointer to the contained instance.
+     * @return An opaque pointer the contained instance, if any.
      */
     inline void * data() ENTT_NOEXCEPT {
         return const_cast<void *>(const_cast<const meta_handle *>(this)->data());
     }
 
     /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @return TODO
+     * @brief Returns false if a handle is empty, true otherwise.
+     * @return False if the handle is empty, true otherwise.
      */
     inline explicit operator bool() const ENTT_NOEXCEPT {
         return instance;
@@ -436,9 +405,6 @@ private:
     const internal::meta_type_node *node;
     void *instance;
 };
-
-
-// TODO through a meta_handle I can break a meta_any -> we cannot return meta prop objects ...
 
 
 /**
@@ -1244,12 +1210,9 @@ public:
     }
 
     /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @tparam Type TODO
-     * @return TODO
+     * @brief Checks if an instance can be converted to a given type.
+     * @tparam Type Type to which to convert the instance.
+     * @return True if the conversion is viable, false otherwise.
      */
     template<typename Type>
     inline bool convertible() const ENTT_NOEXCEPT {
