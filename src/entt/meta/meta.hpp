@@ -556,23 +556,17 @@ public:
     }
 
     /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @return TODO
+     * @brief Returns a handle for the underlying instance of a meta any.
+     * @return A handle for the underlying instance of a meta any, if any.
      */
     inline meta_handle handle() const ENTT_NOEXCEPT {
         return node ? node->handle(instance) : meta_handle{};
     }
 
     /**
-     * @brief TODO
-     *
-     * TODO
-     *
-     * @tparam Type TODO
-     * @return TODO
+     * @brief Checks if an instance can be converted to a given type.
+     * @tparam Type Type to which to convert the instance.
+     * @return True if the conversion is viable, false otherwise.
      */
     template<typename Type>
     inline bool convertible() const ENTT_NOEXCEPT {
@@ -580,12 +574,18 @@ public:
     }
 
     /**
-     * @brief TODO
+     * @brief Converts an instance to a given type.
      *
-     * TODO
+     * The type of the instance must be such that the conversion is possible.
      *
-     * @tparam Type TODO
-     * @return TODO
+     * @warning
+     * Attempting to perform a conversion that isn't viable results in undefined
+     * behavior.<br/>
+     * An assertion will abort the execution at runtime in debug mode in case
+     * the conversion is not feasible.
+     *
+     * @tparam Type Type to which to convert the instance.
+     * @return A reference to the contained instance.
      */
     template<typename Type>
     inline const Type & to() const ENTT_NOEXCEPT {
@@ -594,12 +594,18 @@ public:
     }
 
     /**
-     * @brief TODO
+     * @brief Converts an instance to a given type.
      *
-     * TODO
+     * The type of the instance must be such that the conversion is possible.
      *
-     * @tparam Type TODO
-     * @return TODO
+     * @warning
+     * Attempting to perform a conversion that isn't viable results in undefined
+     * behavior.<br/>
+     * An assertion will abort the execution at runtime in debug mode in case
+     * the conversion is not feasible.
+     *
+     * @tparam Type Type to which to convert the instance.
+     * @return A reference to the contained instance.
      */
     template<typename Type>
     inline Type & to() ENTT_NOEXCEPT {
@@ -617,7 +623,7 @@ public:
     /**
      * @brief Checks if two containers differ in their content.
      * @param other Container with which to compare.
-     * @return False if the two containers differ in their content, false
+     * @return False if the two containers differ in their content, true
      * otherwise.
      */
     inline bool operator==(const meta_any &other) const ENTT_NOEXCEPT {
@@ -634,10 +640,10 @@ private:
 
 
 /**
- * @brief TODO
- * @param lhs TODO
- * @param rhs TODO
- * @return TODO
+ * @brief Checks if two containers differ in their content.
+ * @param lhs A meta any object, either empty or not.
+ * @param rhs A meta any object, either empty or not.
+ * @return True if the two containers differ in their content, false otherwise.
  */
 inline bool operator!=(const meta_any &lhs, const meta_any &rhs) ENTT_NOEXCEPT {
     return !(lhs == rhs);
@@ -1362,14 +1368,11 @@ public:
      */
     template<typename... Args>
     meta_any construct(Args &&... args) const {
-        // TODO can we use iterate?
-        auto *curr = node->ctor;
+        auto *ctor = internal::iterate<&internal::meta_type_node::ctor>([](auto *node) {
+            return node->meta()->template accept<Args...>();
+        }, node);
 
-        while(curr && !curr->meta()->template accept<Args...>()) {
-            curr = curr->next;
-        }
-
-        return curr ? curr->meta()->invoke(std::forward<Args>(args)...) : meta_any{};
+        return ctor ? ctor->invoke(std::forward<Args>(args)...) : meta_any{};
     }
 
     /**
@@ -1415,8 +1418,8 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::iterate<&internal::meta_type_node::prop>([key = std::forward<Key>(key)](auto *curr) {
-            const auto &id = curr->meta()->key();
+        return internal::iterate<&internal::meta_type_node::prop>([key = std::forward<Key>(key)](auto *node) {
+            const auto &id = node->meta()->key();
             return id.template convertible<Key>() && id == key;
         }, node);
     }
