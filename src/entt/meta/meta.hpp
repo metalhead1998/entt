@@ -16,7 +16,7 @@
 namespace entt {
 
 
-class meta_handle;
+struct meta_handle;
 class meta_any;
 class meta_prop;
 class meta_base;
@@ -113,8 +113,8 @@ struct meta_info: meta_node<std::decay_t<Type>...> {};
 
 struct meta_prop_node final {
     meta_prop_node * const next;
-    const meta_any &(* const key)();
-    const meta_any &(* const value)();
+    meta_any(* const key)();
+    meta_any(* const value)();
     meta_prop *(* const meta)();
 };
 
@@ -123,7 +123,7 @@ struct meta_base_node final {
     meta_base_node * const next;
     meta_type_node *(* const parent)();
     meta_type_node *(* const type)();
-    const void *(* const conv)(const void *);
+    void *(* const conv)(void *);
     meta_base *(* const meta)();
 };
 
@@ -176,7 +176,6 @@ struct meta_func_node final {
     meta_type_node *(* const ret)();
     meta_type_node *(* const arg)(size_type);
     bool(* const accept)(const meta_type_node ** const);
-    meta_any(* const cinvoke)(meta_handle, const meta_any *);
     meta_any(* const invoke)(meta_handle, const meta_any *);
     meta_func *(* const meta)();
 };
@@ -240,6 +239,35 @@ auto iterate(Op op, const meta_type_node *node) ENTT_NOEXCEPT
 }
 
 
+template<typename Type>
+Type * convert(void *instance, const internal::meta_type_node *node) ENTT_NOEXCEPT {
+    Type *conv = nullptr;
+
+    if(node == internal::meta_info<Type>::resolve()) {
+        conv = static_cast<Type *>(instance);
+    } else {
+        auto *base = node ? node->base : nullptr;
+
+        while(base && !conv) {
+            conv = convert<Type>(base->conv(instance), base->type());
+            base = base->next;
+        }
+    }
+
+    return conv;
+}
+
+
+template<typename Type>
+inline bool convertible(const internal::meta_type_node *node) ENTT_NOEXCEPT {
+    const auto *type = internal::meta_info<Type>::resolve();
+
+    return node && ((node == type) || internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
+        return node->type() == type;
+    }, node));
+}
+
+
 }
 
 
@@ -254,31 +282,8 @@ auto iterate(Op op, const meta_type_node *node) ENTT_NOEXCEPT
  *
  * TODO
  */
-class meta_handle final {
-    template<typename Type>
-    static const Type * convert(const void *instance, const internal::meta_type_node *node) {
-        const void *conv = nullptr;
-
-        if(node == internal::meta_info<Type>::resolve()) {
-            conv = instance;
-        } else {
-            auto *base = node ? node->base : nullptr;
-
-            while(base && !conv) {
-                conv = convert<Type>(base->conv(instance), base->type());
-                base = base->next;
-            }
-        }
-
-        return static_cast<const Type *>(conv);
-    }
-
-public:
-    /**
-     * @brief TODO
-     *
-     * TODO
-     */
+struct meta_handle final {
+    /*! @brief Default constructor. */
     meta_handle() ENTT_NOEXCEPT
         : node{nullptr},
           instance{nullptr}
@@ -290,10 +295,21 @@ public:
      * @tparam Type TODO
      * @param instance TODO
      */
+    template<typename Type>
+    meta_handle(Type *instance) ENTT_NOEXCEPT
+        : node{internal::meta_info<std::decay_t<Type>>::resolve()},
+          instance{instance}
+    {}
+
+    /**
+     * @brief TODO
+     *
+     * @tparam Type TODO
+     * @param instance TODO
+     */
     template<typename Type, typename = std::enable_if_t<!std::is_same_v<std::decay_t<Type>, meta_handle>>>
     meta_handle(Type &&instance) ENTT_NOEXCEPT
-        : node{internal::meta_info<std::decay_t<Type>>::resolve()},
-          instance{&instance}
+        : meta_handle{&instance}
     {}
 
     /**
@@ -336,6 +352,14 @@ public:
     meta_handle & operator=(meta_handle &&) ENTT_NOEXCEPT = default;
 
     /**
+     * @brief Returns the meta type of the underlying object.
+     * @return The meta type of the underlying object, if any.
+     */
+    inline meta_type * type() const ENTT_NOEXCEPT {
+        return node ? node->meta() : nullptr;
+    }
+
+    /**
      * @brief TODO
      *
      * TODO
@@ -344,12 +368,8 @@ public:
      * @return TODO
      */
     template<typename Type>
-    bool convertible() const ENTT_NOEXCEPT {
-        const auto *type = internal::meta_info<Type>::resolve();
-
-        return node && ((node == type) || internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
-            return node->type() == type;
-        }, node));
+    inline bool convertible() const ENTT_NOEXCEPT {
+        return internal::convertible<Type>(node);
     }
 
     /**
@@ -363,7 +383,7 @@ public:
     template<typename Type>
     inline const Type * to() const ENTT_NOEXCEPT {
         assert(convertible<Type>());
-        return convert<Type>(instance, node);
+        return internal::convert<Type>(instance, node);
     }
 
     /**
@@ -418,6 +438,9 @@ private:
 };
 
 
+// TODO through a meta_handle I can break a meta_any -> we cannot return meta prop objects ...
+
+
 /**
  * @brief Meta any object.
  *
@@ -451,7 +474,7 @@ public:
     /*! @brief Default constructor. */
     meta_any() ENTT_NOEXCEPT
         : storage{},
-          direct{nullptr},
+          instance{nullptr},
           destroy{nullptr},
           node{nullptr},
           comparator{nullptr}
@@ -481,17 +504,17 @@ public:
 
         if constexpr(sizeof(std::decay_t<Type>) <= sizeof(void *)) {
             new (&storage) actual_type{std::forward<Type>(type)};
-            direct = &storage;
+            instance = &storage;
 
-            destroy = [](void *direct) {
-                static_cast<actual_type *>(direct)->~actual_type();
+            destroy = [](void *instance) {
+                static_cast<actual_type *>(instance)->~actual_type();
             };
         } else {
-            direct = new actual_type{std::forward<Type>(type)};
-            new (&storage) actual_type *{static_cast<actual_type *>(direct)};
+            instance = new actual_type{std::forward<Type>(type)};
+            new (&storage) actual_type *{static_cast<actual_type *>(instance)};
 
-            destroy = [](void *direct) {
-                delete static_cast<actual_type *>(direct);
+            destroy = [](void *instance) {
+                delete static_cast<actual_type *>(instance);
             };
         }
     }
@@ -499,7 +522,7 @@ public:
     /*! @brief Frees the internal storage, whatever it means. */
     ~meta_any() {
         if(destroy) {
-            destroy(direct);
+            destroy(instance);
         }
     }
 
@@ -517,13 +540,13 @@ public:
      */
     meta_any(meta_any &&other) ENTT_NOEXCEPT
         : storage{},
-          direct{nullptr},
+          instance{nullptr},
           destroy{other.destroy},
           node{other.node},
           comparator{other.comparator}
     {
         std::memcpy(&storage, &other.storage, sizeof(storage_type));
-        direct = (other.direct == &other.storage ? &storage : *reinterpret_cast<void **>(&storage));
+        instance = (other.instance == &other.storage ? &storage : *reinterpret_cast<void **>(&storage));
         other.destroy = nullptr;
     }
 
@@ -543,13 +566,13 @@ public:
     meta_any & operator=(meta_any &&other) ENTT_NOEXCEPT {
         if(this != &other) {
             if(destroy) {
-                destroy(direct);
+                destroy(instance);
                 destroy = nullptr;
             }
 
             auto tmp{std::move(other)};
             std::memcpy(&storage, &tmp.storage, sizeof(storage_type));
-            direct = (tmp.direct == &tmp.storage ? &storage : *reinterpret_cast<void **>(&storage));
+            instance = (tmp.instance == &tmp.storage ? &storage : *reinterpret_cast<void **>(&storage));
             std::swap(destroy, tmp.destroy);
             std::swap(node, tmp.node);
             std::swap(comparator, tmp.comparator);
@@ -574,7 +597,7 @@ public:
      * @return TODO
      */
     inline meta_handle handle() const ENTT_NOEXCEPT {
-        return node ? node->handle(direct) : meta_handle{};
+        return node ? node->handle(instance) : meta_handle{};
     }
 
     /**
@@ -587,7 +610,7 @@ public:
      */
     template<typename Type>
     inline bool convertible() const ENTT_NOEXCEPT {
-        return handle().convertible<Type>();
+        return internal::convertible<Type>(node);
     }
 
     /**
@@ -600,7 +623,8 @@ public:
      */
     template<typename Type>
     inline const Type & to() const ENTT_NOEXCEPT {
-        return *handle().to<Type>();
+        assert(convertible<Type>());
+        return *internal::convert<Type>(instance, node);
     }
 
     /**
@@ -631,12 +655,12 @@ public:
      * otherwise.
      */
     inline bool operator==(const meta_any &other) const ENTT_NOEXCEPT {
-        return (!direct && !other.direct) || (direct && other.direct && node == other.node && comparator(direct, other.direct));
+        return (!instance && !other.instance) || (instance && other.instance && node == other.node && comparator(instance, other.instance));
     }
 
 private:
     storage_type storage;
-    void *direct;
+    void *instance;
     destroy_fn_type destroy;
     internal::meta_type_node *node;
     compare_fn_type comparator;
@@ -674,7 +698,7 @@ public:
      * @brief Returns the stored key.
      * @return A meta any containing the key stored with the given property.
      */
-    inline const meta_any & key() const ENTT_NOEXCEPT {
+    inline meta_any key() const ENTT_NOEXCEPT {
         return node->key();
     }
 
@@ -682,7 +706,7 @@ public:
      * @brief Returns the stored value.
      * @return A meta any containing the value stored with the given property.
      */
-    inline const meta_any & value() const ENTT_NOEXCEPT {
+    inline meta_any value() const ENTT_NOEXCEPT {
         return node->value();
     }
 
@@ -728,17 +752,8 @@ public:
      * @param instance The instance to convert.
      * @return An opaque pointer to the base type.
      */
-    inline const void * convert(const void *instance) const ENTT_NOEXCEPT {
+    inline void * convert(void *instance) const ENTT_NOEXCEPT {
         return node->conv(instance);
-    }
-
-    /**
-     * @brief Converts an instance from a parent type to a base type.
-     * @param instance The instance to convert.
-     * @return An opaque pointer to the base type.
-     */
-    inline void * convert(void *instance) ENTT_NOEXCEPT {
-        return const_cast<void *>(const_cast<const meta_base *>(this)->convert(instance));
     }
 
 private:
@@ -814,7 +829,7 @@ public:
      * @return A meta any containing the new instance, if any.
      */
     template<typename... Args>
-    meta_any invoke(Args &&... args) {
+    meta_any invoke(Args &&... args) const {
         std::array<const meta_any, sizeof...(Args)> any{{std::forward<Args>(args)...}};
         return accept<Args...>() ? node->invoke(any.data()) : meta_any{};
     }
@@ -879,13 +894,13 @@ public:
     /**
      * @brief Destroys an instance of the underlying type.
      *
-     * The actual type of the instance must coincide exactly with that of the
-     * parent type of the meta destructor. Otherwise, invoking the meta
-     * destructor results in an undefined behavior.
+     * The instance must be convertible to the parent type of the meta
+     * destructor. Otherwise, invoking the meta destructor results in an
+     * undefined behavior.
      *
      * @param handle An opaque pointer to an instance of the underlying type.
      */
-    inline void invoke(meta_handle handle) {
+    inline void invoke(meta_handle handle) const {
         node->invoke(handle);
     }
 
@@ -995,9 +1010,8 @@ public:
     /**
      * @brief Sets the value of the variable enclosed by a given meta type.
      *
-     * The actual type of the instance must coincide exactly with that of the
-     * parent type of the meta data. Otherwise, invoking the setter results in
-     * an undefined behavior.<br/>
+     * The instance must be convertible to the parent type of the meta data.
+     * Otherwise, invoking the setter results in an undefined behavior.<br/>
      * The type of the value must coincide exactly with that of the variable
      * enclosed by the meta data. Otherwise, invoking the setter does nothing.
      *
@@ -1006,16 +1020,15 @@ public:
      * @param value Parameter to use to set the underlying variable.
      */
     template<typename Type>
-    inline void set(meta_handle handle, Type &&value) {
+    inline void set(meta_handle handle, Type &&value) const {
         return accept<Type>() ? node->set(handle, meta_any{std::forward<Type>(value)}) : void();
     }
 
     /**
      * @brief Gets the value of the variable enclosed by a given meta type.
      *
-     * The actual type of the instance must coincide exactly with that of the
-     * parent type of the meta function. Otherwise, invoking the getter results
-     * in an undefined behavior.
+     * The instance must be convertible to the parent type of the meta function.
+     * Otherwise, invoking the getter results in an undefined behavior.
      *
      * @param handle An opaque pointer to an instance of the underlying type.
      * @return A meta any containing the value of the underlying variable.
@@ -1154,9 +1167,9 @@ public:
      * To invoke a meta function, the types of the parameters must coincide
      * exactly with those required by the underlying function. Otherwise, an
      * empty and then invalid container is returned.<br/>
-     * The actual type of the instance must coincide exactly with that of the
-     * parent type of the meta function. Otherwise, invoking the underlying
-     * function results in an undefined behavior.
+     * The instance must be convertible to the parent type of the meta function.
+     * Otherwise, invoking the underlying function results in an undefined
+     * behavior.
      *
      * @tparam Args Types of arguments to use to invoke the function.
      * @param handle An opaque pointer to an instance of the underlying type.
@@ -1165,27 +1178,6 @@ public:
      */
     template<typename... Args>
     meta_any invoke(meta_handle handle, Args &&... args) const {
-        std::array<const meta_any, sizeof...(Args)> any{{std::forward<Args>(args)...}};
-        return accept<Args...>() ? node->cinvoke(std::move(handle), any.data()) : meta_any{};
-    }
-
-    /**
-     * @brief Invokes the underlying function, if possible.
-     *
-     * To invoke a meta function, the types of the parameters must coincide
-     * exactly with those required by the underlying function. Otherwise, an
-     * empty and then invalid container is returned.<br/>
-     * The actual type of the instance must coincide exactly with that of the
-     * parent type of the meta function. Otherwise, invoking the underlying
-     * function results in an undefined behavior.
-     *
-     * @tparam Args Types of arguments to use to invoke the function.
-     * @param handle An opaque pointer to an instance of the underlying type.
-     * @param args Parameters to use to invoke the function.
-     * @return A meta any containing the returned value, if any.
-     */
-    template<typename... Args>
-    meta_any invoke(meta_handle handle, Args &&... args) {
         std::array<const meta_any, sizeof...(Args)> any{{std::forward<Args>(args)...}};
         return accept<Args...>() ? node->invoke(std::move(handle), any.data()) : meta_any{};
     }
@@ -1249,6 +1241,19 @@ public:
      */
     inline const char * name() const ENTT_NOEXCEPT {
         return node->name;
+    }
+
+    /**
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @tparam Type TODO
+     * @return TODO
+     */
+    template<typename Type>
+    inline bool convertible() const ENTT_NOEXCEPT {
+        return internal::convertible<Type>(node);
     }
 
     /**
@@ -1407,13 +1412,12 @@ public:
     /**
      * @brief Destroys an instance of the underlying type.
      *
-     * The actual type of the instance must coincide exactly with that of the
-     * meta type. Otherwise, invoking the meta destructor results in an
-     * undefined behavior.
+     * The instance must be convertible to the underlying type. Otherwise,
+     * invoking the meta destructor results in an undefined behavior.
      *
      * @param handle An opaque pointer to an instance of the underlying type.
      */
-    inline void destroy(meta_handle handle) {
+    inline void destroy(meta_handle handle) const {
         return node->dtor ? node->dtor->invoke(handle) : node->destroy(handle);
     }
 
@@ -1483,8 +1487,13 @@ struct meta_function_helper<Ret(Args...)> {
     }
 
     static auto accept(const internal::meta_type_node ** const types) {
-        std::array<internal::meta_type_node *, sizeof...(Args)> args{{internal::meta_info<Args>::resolve()...}};
-        return std::equal(args.cbegin(), args.cend(), types);
+        return accept(types, std::make_index_sequence<sizeof...(Args)>{});
+    }
+
+private:
+    template<std::size_t... Indexes>
+    inline static auto accept(const internal::meta_type_node ** const types, std::index_sequence<Indexes...>) {
+        return (convertible<Args>(*(types+Indexes)) && ...);
     }
 };
 

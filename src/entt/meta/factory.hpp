@@ -47,8 +47,8 @@ class meta_factory {
     template<auto Func>
     using func_type = internal::meta_function_helper<std::integral_constant<decltype(Func), Func>>;
 
-    template<typename Name, typename Node>
-    inline bool duplicate(const Name &name, const Node *node) ENTT_NOEXCEPT {
+    template<typename Node>
+    inline bool duplicate(const hashed_string &name, const Node *node) ENTT_NOEXCEPT {
         return node ? node->name == name || duplicate(name, node->next) : false;
     }
 
@@ -63,16 +63,15 @@ class meta_factory {
 
     template<typename Owner, typename Property, typename... Other>
     internal::meta_prop_node * properties(Property &&property, Other &&... other) {
-        static const meta_any key{std::get<0>(property)};
-        static const meta_any value{std::get<1>(property)};
+        static auto prop{std::move(property)};
 
         static internal::meta_prop_node node{
             properties<Owner>(std::forward<Other>(other)...),
-            []() -> const meta_any & {
-                return key;
+            []() -> meta_any {
+                return std::get<0>(prop);
             },
-            []() -> const meta_any & {
-                return value;
+            []() -> meta_any {
+                return std::get<1>(prop);
             },
             []() {
                 static meta_prop meta{&node};
@@ -80,7 +79,7 @@ class meta_factory {
             }
         };
 
-        assert(!duplicate(key, node.next));
+        assert(!duplicate(meta_any{std::get<0>(prop)}, node.next));
         return &node;
     }
 
@@ -126,8 +125,8 @@ public:
             type->base,
             &internal::meta_info<Type>::resolve,
             &internal::meta_info<Base>::resolve,
-            [](const void *instance) -> const void * {
-                return static_cast<const Base *>(static_cast<const Type *>(instance));
+            [](void *instance) -> void * {
+                return static_cast<Base *>(static_cast<Type *>(instance));
             },
             []() {
                 static meta_base meta{&node};
@@ -341,9 +340,6 @@ public:
             &internal::meta_info<typename func_type<Func>::return_type>::resolve,
             &func_type<Func>::arg,
             &func_type<Func>::accept,
-            [](meta_handle handle, const meta_any *any) {
-                return internal::invoke<Func>(std::as_const(handle), any, std::make_index_sequence<func_type<Func>::size>{});
-            },
             [](meta_handle handle, const meta_any *any) {
                 return internal::invoke<Func>(handle, any, std::make_index_sequence<func_type<Func>::size>{});
             },

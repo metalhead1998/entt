@@ -140,9 +140,9 @@ TEST_F(Meta, Fundamental) {
     auto any = type->construct();
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.handle().convertible<char>());
-    ASSERT_TRUE(any.handle().convertible<const char>());
-    ASSERT_TRUE(any.handle().convertible<const char &>());
+    ASSERT_TRUE(any.convertible<char>());
+    ASSERT_TRUE(any.convertible<const char>());
+    ASSERT_TRUE(any.convertible<const char &>());
     ASSERT_EQ(any.type(), entt::resolve<char>());
     ASSERT_EQ(any.type(), entt::resolve<const char>());
     ASSERT_EQ(any.type(), entt::resolve<const char &>());
@@ -152,9 +152,9 @@ TEST_F(Meta, Fundamental) {
     any = type->construct('c');
 
     ASSERT_TRUE(any);
-    ASSERT_TRUE(any.handle().convertible<char>());
-    ASSERT_TRUE(any.handle().convertible<const char>());
-    ASSERT_TRUE(any.handle().convertible<const char &>());
+    ASSERT_TRUE(any.convertible<char>());
+    ASSERT_TRUE(any.convertible<const char>());
+    ASSERT_TRUE(any.convertible<const char &>());
     ASSERT_EQ(any.type(), entt::resolve<char>());
     ASSERT_EQ(any.type(), entt::resolve<const char>());
     ASSERT_EQ(any.type(), entt::resolve<const char &>());
@@ -198,6 +198,9 @@ TEST_F(Meta, MetaHandle) {
 }
 
 
+// TODO create a test with convertibles
+
+
 TEST_F(Meta, MetaAny) {
     entt::meta_any empty{};
     const entt::meta_any &cempty = empty;
@@ -205,8 +208,8 @@ TEST_F(Meta, MetaAny) {
     ASSERT_FALSE(empty);
     ASSERT_FALSE(cempty);
     ASSERT_EQ(empty.type(), nullptr);
-    ASSERT_FALSE(empty.handle().convertible<int>());
-    ASSERT_FALSE(cempty.handle().convertible<char>());
+    ASSERT_FALSE(empty.convertible<int>());
+    ASSERT_FALSE(cempty.convertible<char>());
     ASSERT_EQ(cempty.handle().data(), nullptr);
     ASSERT_EQ(empty.handle().data(), nullptr);
     ASSERT_EQ(empty, cempty);
@@ -220,7 +223,7 @@ TEST_F(Meta, MetaAny) {
     ASSERT_EQ(any.type(), cany.type());
     ASSERT_EQ(cany.type(), entt::resolve<char>());
     ASSERT_EQ(cany.type(), entt::resolve<char &>());
-    ASSERT_TRUE(any.handle().convertible<char>());
+    ASSERT_TRUE(any.convertible<char>());
     ASSERT_EQ(cany.to<char>(), any.to<char>());
     ASSERT_EQ(cany.to<char>(), 'c');
     ASSERT_NE(cany.handle().data(), nullptr);
