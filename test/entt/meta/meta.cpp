@@ -25,20 +25,57 @@ bool operator!=(const fat_type &lhs, const fat_type &rhs) {
     return !(lhs == rhs);
 }
 
-struct base_type {
-    // TODO
-};
+struct base_type {};
 
 struct derived_type: base_type {
-    // TODO
+    derived_type() = default;
+    derived_type(int i, char c): i{i}, c{c} {}
+
+    const int i{};
+    const char c{};
 };
 
-struct Meta: ::testing::Test {
-    static void SetUpTestCase() {
-        entt::reflect<derived_type>("derived")
-                .base<base_type>();
+derived_type derived_factory() {
+    return {42, 'c'};
+}
 
-        // TODO
+struct destroyable_type {
+    ~destroyable_type() { ++counter; }
+    inline static int counter = 0;
+};
+
+struct cleanup_type: destroyable_type {
+    static void destroy(cleanup_type &instance) {
+        instance.~cleanup_type();
+        ++counter;
+    }
+};
+
+struct not_comparable_type {
+    bool operator==(const not_comparable_type &) const = delete;
+};
+
+bool operator!=(const not_comparable_type &, const not_comparable_type &) = delete;
+
+struct Meta: public ::testing::Test {
+    static void SetUpTestCase() {
+        entt::reflect<char>("char", std::make_pair(properties::prop_int, 42));
+
+        entt::reflect<base_type>("base");
+
+        entt::reflect<derived_type>("derived")
+                .base<base_type>()
+                .ctor<int, char>(std::make_pair(properties::prop_bool, false))
+                .ctor<&derived_factory>(std::make_pair(properties::prop_int, 42));
+
+        entt::reflect<destroyable_type>("destroyable");
+
+        entt::reflect<cleanup_type>("cleanup")
+                .dtor<&cleanup_type::destroy>(std::make_pair(properties::prop_int, 42));
+    }
+
+    void SetUp() override {
+        destroyable_type::counter = 0;
     }
 };
 
@@ -134,6 +171,7 @@ TEST_F(Meta, MetaAnyEmpty) {
     ASSERT_FALSE(any.convertible<void>());
     ASSERT_FALSE(any.convertible<empty_type>());
     ASSERT_EQ(any, entt::meta_any{});
+    ASSERT_NE(any, entt::meta_any{'c'});
 }
 
 TEST_F(Meta, MetaAnySBOMoveConstruction) {
@@ -205,31 +243,160 @@ TEST_F(Meta, MetaAnyNoSBOMoveAssignment) {
 }
 
 TEST_F(Meta, MetaAnyComparable) {
-    // TODO
+    entt::meta_any any{'c'};
+
+    ASSERT_EQ(any, any);
+    ASSERT_EQ(any, entt::meta_any{'c'});
+    ASSERT_NE(any, entt::meta_any{'a'});
+    ASSERT_NE(any, entt::meta_any{});
+
+    ASSERT_TRUE(any == any);
+    ASSERT_TRUE(any == entt::meta_any{'c'});
+    ASSERT_FALSE(any == entt::meta_any{'a'});
+    ASSERT_TRUE(any != entt::meta_any{'a'});
+    ASSERT_TRUE(any != entt::meta_any{});
 }
 
 TEST_F(Meta, MetaAnyNotComparable) {
-    // TODO
+    entt::meta_any any{not_comparable_type{}};
+
+    ASSERT_EQ(any, any);
+    ASSERT_NE(any, entt::meta_any{not_comparable_type{}});
+    ASSERT_NE(any, entt::meta_any{});
+
+    ASSERT_TRUE(any == any);
+    ASSERT_FALSE(any == entt::meta_any{not_comparable_type{}});
+    ASSERT_TRUE(any != entt::meta_any{});
 }
 
 TEST_F(Meta, MetaAnyConvertible) {
-    // TODO
+    entt::meta_any any{derived_type{}};
+    auto handle = any.handle();
+
+    ASSERT_TRUE(any);
+    ASSERT_EQ(any.type(), entt::resolve<derived_type>());
+    ASSERT_FALSE(any.convertible<void>());
+    ASSERT_TRUE(any.convertible<base_type>());
+    ASSERT_TRUE(any.convertible<derived_type>());
+    ASSERT_EQ(&any.to<base_type>(), handle.to<base_type>());
+    ASSERT_EQ(&any.to<derived_type>(), handle.to<derived_type>());
+    ASSERT_EQ(&std::as_const(any).to<base_type>(), handle.to<base_type>());
+    ASSERT_EQ(&std::as_const(any).to<derived_type>(), handle.to<derived_type>());
 }
 
 TEST_F(Meta, MetaProp) {
-    // TODO
+    auto *prop = entt::resolve<char>()->prop(properties::prop_int);
+
+    ASSERT_NE(prop, nullptr);
+    ASSERT_EQ(prop->key(), properties::prop_int);
+    ASSERT_EQ(prop->value(), 42);
 }
 
 TEST_F(Meta, MetaBase) {
-    // TODO
+    auto *base = entt::resolve<derived_type>()->base("base");
+    derived_type derived{};
+
+    ASSERT_NE(base, nullptr);
+    ASSERT_EQ(base->parent(), entt::resolve("derived"));
+    ASSERT_EQ(base->type(), entt::resolve<base_type>());
+    ASSERT_EQ(base->convert(&derived), static_cast<base_type *>(&derived));
 }
 
 TEST_F(Meta, MetaCtor) {
-    // TODO
+    auto *ctor = entt::resolve<derived_type>()->ctor<int, char>();
+
+    ASSERT_NE(ctor, nullptr);
+    ASSERT_EQ(ctor->parent(), entt::resolve("derived"));
+    ASSERT_EQ(ctor->size(), entt::meta_ctor::size_type{2});
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), entt::resolve<int>());
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{1}), entt::resolve<char>());
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{2}), nullptr);
+    ASSERT_TRUE((ctor->accept<int, char>()));
+    ASSERT_FALSE((ctor->accept<>()));
+
+    auto any = ctor->invoke(42, 'c');
+    auto empty = ctor->invoke();
+
+    ASSERT_FALSE(empty);
+    ASSERT_TRUE(any);
+    ASSERT_TRUE(any.convertible<derived_type>());
+    ASSERT_EQ(any.to<derived_type>().i, 42);
+    ASSERT_EQ(any.to<derived_type>().c, 'c');
+
+    ctor->prop([](auto *prop) {
+        ASSERT_NE(prop, nullptr);
+        ASSERT_EQ(prop->key(), properties::prop_bool);
+        ASSERT_EQ(prop->value(), false);
+    });
+
+    ASSERT_EQ(ctor->prop(properties::prop_int), nullptr);
+
+    auto *prop = ctor->prop(properties::prop_bool);
+
+    ASSERT_NE(prop, nullptr);
+    ASSERT_EQ(prop->key(), properties::prop_bool);
+    ASSERT_EQ(prop->value(), false);
+}
+
+TEST_F(Meta, MetaCtorFunc) {
+    auto *ctor = entt::resolve<derived_type>()->ctor<>();
+
+    ASSERT_NE(ctor, nullptr);
+    ASSERT_EQ(ctor->parent(), entt::resolve("derived"));
+    ASSERT_EQ(ctor->size(), entt::meta_ctor::size_type{});
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), nullptr);
+    ASSERT_FALSE((ctor->accept<int, char>()));
+    ASSERT_TRUE((ctor->accept<>()));
+
+    auto any = ctor->invoke();
+    auto empty = ctor->invoke(42, 'c');
+
+    ASSERT_FALSE(empty);
+    ASSERT_TRUE(any);
+    ASSERT_TRUE(any.convertible<derived_type>());
+    ASSERT_EQ(any.to<derived_type>().i, 42);
+    ASSERT_EQ(any.to<derived_type>().c, 'c');
+
+    ctor->prop([](auto *prop) {
+        ASSERT_NE(prop, nullptr);
+        ASSERT_EQ(prop->key(), properties::prop_int);
+        ASSERT_EQ(prop->value(), 42);
+    });
+
+    ASSERT_EQ(ctor->prop(properties::prop_bool), nullptr);
+
+    auto *prop = ctor->prop(properties::prop_int);
+
+    ASSERT_NE(prop, nullptr);
+    ASSERT_EQ(prop->key(), properties::prop_int);
+    ASSERT_EQ(prop->value(), 42);
 }
 
 TEST_F(Meta, MetaDtor) {
-    // TODO
+    auto *dtor = entt::resolve<cleanup_type>()->dtor();
+    cleanup_type cleanup{};
+
+    ASSERT_NE(dtor, nullptr);
+    ASSERT_EQ(dtor->parent(), entt::resolve("cleanup"));
+    ASSERT_EQ(destroyable_type::counter, 0);
+
+    dtor->invoke(entt::meta_handle{cleanup});
+
+    ASSERT_EQ(destroyable_type::counter, 2);
+
+    dtor->prop([](auto *prop) {
+        ASSERT_NE(prop, nullptr);
+        ASSERT_EQ(prop->key(), properties::prop_int);
+        ASSERT_EQ(prop->value(), 42);
+    });
+
+    ASSERT_EQ(dtor->prop(properties::prop_bool), nullptr);
+
+    auto *prop = dtor->prop(properties::prop_int);
+
+    ASSERT_NE(prop, nullptr);
+    ASSERT_EQ(prop->key(), properties::prop_int);
+    ASSERT_EQ(prop->value(), 42);
 }
 
 TEST_F(Meta, MetaData) {
@@ -268,7 +435,19 @@ TEST_F(Meta, MetaType) {
     // TODO
 }
 
-TEST_F(Meta, DefDestructor) {
+TEST_F(Meta, MetaTypeConstruct) {
+    // TODO
+}
+
+TEST_F(Meta, MetaTypeDestroyNoDtor) {
+    // TODO
+}
+
+TEST_F(Meta, MetaTypeDestroyWithDtor) {
+    // TODO
+}
+
+TEST_F(Meta, AbstractClass) {
     //TODO
 }
 

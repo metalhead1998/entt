@@ -432,8 +432,8 @@ class meta_any final {
     }
 
     template<typename Type>
-    inline static bool compare(char, const Type &, const Type &) {
-        return false;
+    inline static bool compare(char, const Type &lhs, const Type &rhs) {
+        return &lhs == &rhs;
     }
 
 public:
