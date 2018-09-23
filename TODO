@@ -18,7 +18,9 @@
 * meta: add support for enums
 * meta: can we do more on "convertibles"?
 * meta: should accept consider "convertibles"?
+* meta: current convert must be cast, then add meta_cast for cross types cast like int to ->double
 * registry::probe<component>(entt) (returns a component * if entt has the component, nullptr otherwise)
 * hashed string: add implicit check on construction for uniqueness (optional)
 * add a note about multithreading support to the README file
 * signals on entity creation/destruction
+* flexible views with "composable" filters

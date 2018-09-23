@@ -1452,7 +1452,7 @@ struct meta_function_helper<Ret(Args...)> {
         return std::array<internal::meta_type_node *, sizeof...(Args)>{{internal::meta_info<Args>::resolve()...}}[index];
     }
 
-    static auto accept(const internal::meta_type_node ** const types) {
+    static bool accept(const internal::meta_type_node ** const types) {
         return accept(types, std::make_index_sequence<sizeof...(Args)>{});
     }
 
