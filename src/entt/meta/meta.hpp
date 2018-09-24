@@ -123,7 +123,7 @@ struct meta_base_node final {
     meta_base_node * const next;
     meta_type_node *(* const parent)();
     meta_type_node *(* const type)();
-    void *(* const conv)(void *);
+    void *(* const cast)(void *);
     meta_base *(* const meta)();
 };
 
@@ -240,7 +240,7 @@ auto iterate(Op op, const meta_type_node *node) ENTT_NOEXCEPT
 
 
 template<typename Type>
-Type * convert(void *instance, const internal::meta_type_node *node) ENTT_NOEXCEPT {
+Type * try_cast(void *instance, const internal::meta_type_node *node) ENTT_NOEXCEPT {
     Type *conv = nullptr;
 
     if(node == internal::meta_info<Type>::resolve()) {
@@ -249,7 +249,7 @@ Type * convert(void *instance, const internal::meta_type_node *node) ENTT_NOEXCE
         auto *base = node ? node->base : nullptr;
 
         while(base && !conv) {
-            conv = convert<Type>(base->conv(instance), base->type());
+            conv = try_cast<Type>(base->cast(instance), base->type());
             base = base->next;
         }
     }
@@ -259,7 +259,7 @@ Type * convert(void *instance, const internal::meta_type_node *node) ENTT_NOEXCE
 
 
 template<typename Type>
-inline bool convertible(const internal::meta_type_node *node) ENTT_NOEXCEPT {
+inline bool can_cast(const internal::meta_type_node *node) ENTT_NOEXCEPT {
     const auto *type = internal::meta_info<Type>::resolve();
 
     return node && ((node == type) || internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
@@ -329,17 +329,7 @@ struct meta_handle final {
     }
 
     /**
-     * @brief Checks if an instance can be converted to a given type.
-     * @tparam Type Type to which to convert the instance.
-     * @return True if the conversion is viable, false otherwise.
-     */
-    template<typename Type>
-    inline bool convertible() const ENTT_NOEXCEPT {
-        return internal::convertible<Type>(node);
-    }
-
-    /**
-     * @brief Converts an instance to a given type.
+     * @brief Tries to cast an instance to a given type.
      *
      * The type of the instance must be such that the conversion is possible.
      *
@@ -349,17 +339,16 @@ struct meta_handle final {
      * An assertion will abort the execution at runtime in debug mode in case
      * the conversion is not feasible.
      *
-     * @tparam Type Type to which to convert the instance.
+     * @tparam Type Type to which to cast the instance.
      * @return A pointer to the contained instance.
      */
     template<typename Type>
-    inline const Type * to() const ENTT_NOEXCEPT {
-        assert(convertible<Type>());
-        return internal::convert<Type>(instance, node);
+    inline const Type * try_cast() const ENTT_NOEXCEPT {
+        return internal::try_cast<Type>(instance, node);
     }
 
     /**
-     * @brief Converts an instance to a given type.
+     * @brief Tries to cast an instance to a given type.
      *
      * The type of the instance must be such that the conversion is possible.
      *
@@ -369,12 +358,12 @@ struct meta_handle final {
      * An assertion will abort the execution at runtime in debug mode in case
      * the conversion is not feasible.
      *
-     * @tparam Type Type to which to convert the instance.
+     * @tparam Type Type to which to cast the instance.
      * @return A pointer to the contained instance.
      */
     template<typename Type>
-    inline Type * to() ENTT_NOEXCEPT {
-        return const_cast<Type *>(const_cast<const meta_handle *>(this)->to<Type>());
+    inline Type * try_cast() ENTT_NOEXCEPT {
+        return const_cast<Type *>(const_cast<const meta_handle *>(this)->try_cast<Type>());
     }
 
     /**
@@ -564,17 +553,17 @@ public:
     }
 
     /**
-     * @brief Checks if an instance can be converted to a given type.
-     * @tparam Type Type to which to convert the instance.
+     * @brief Checks if it's possible to cast an instance to a given type.
+     * @tparam Type Type to which to cast the instance.
      * @return True if the conversion is viable, false otherwise.
      */
     template<typename Type>
-    inline bool convertible() const ENTT_NOEXCEPT {
-        return internal::convertible<Type>(node);
+    inline bool can_cast() const ENTT_NOEXCEPT {
+        return internal::can_cast<Type>(node);
     }
 
     /**
-     * @brief Converts an instance to a given type.
+     * @brief Tries to cast an instance to a given type.
      *
      * The type of the instance must be such that the conversion is possible.
      *
@@ -584,17 +573,17 @@ public:
      * An assertion will abort the execution at runtime in debug mode in case
      * the conversion is not feasible.
      *
-     * @tparam Type Type to which to convert the instance.
+     * @tparam Type Type to which to cast the instance.
      * @return A reference to the contained instance.
      */
     template<typename Type>
-    inline const Type & to() const ENTT_NOEXCEPT {
-        assert(convertible<Type>());
-        return *internal::convert<Type>(instance, node);
+    inline const Type & cast() const ENTT_NOEXCEPT {
+        assert(can_cast<Type>());
+        return *internal::try_cast<Type>(instance, node);
     }
 
     /**
-     * @brief Converts an instance to a given type.
+     * @brief Tries to cast an instance to a given type.
      *
      * The type of the instance must be such that the conversion is possible.
      *
@@ -604,12 +593,40 @@ public:
      * An assertion will abort the execution at runtime in debug mode in case
      * the conversion is not feasible.
      *
-     * @tparam Type Type to which to convert the instance.
+     * @tparam Type Type to which to cast the instance.
      * @return A reference to the contained instance.
      */
     template<typename Type>
-    inline Type & to() ENTT_NOEXCEPT {
-        return const_cast<Type &>(const_cast<const meta_any *>(this)->to<Type>());
+    inline Type & cast() ENTT_NOEXCEPT {
+        return const_cast<Type &>(const_cast<const meta_any *>(this)->cast<Type>());
+    }
+
+    /**
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @tparam Type TODO
+     * @return TODO
+     */
+    template<typename Type>
+    inline bool can_convert() const ENTT_NOEXCEPT {
+        // TODO
+        return false;
+    }
+
+    /**
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @tparam Type TODO
+     * @return TODO
+     */
+    template<typename Type>
+    inline meta_any convert() const ENTT_NOEXCEPT {
+        // TODO
+        return meta_any{};
     }
 
     /**
@@ -720,12 +737,12 @@ public:
     }
 
     /**
-     * @brief Converts an instance from a parent type to a base type.
-     * @param instance The instance to convert.
+     * @brief Casts an instance from a parent type to a base type.
+     * @param instance The instance to cast.
      * @return An opaque pointer to the base type.
      */
-    inline void * convert(void *instance) const ENTT_NOEXCEPT {
-        return node->conv(instance);
+    inline void * cast(void *instance) const ENTT_NOEXCEPT {
+        return node->cast(instance);
     }
 
 private:
@@ -830,7 +847,7 @@ public:
     prop(Key &&key) const ENTT_NOEXCEPT {
         return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
-            return id.template convertible<Key>() && id == key;
+            return id.template can_cast<Key>() && id == key;
         }, node->prop);
     }
 
@@ -866,7 +883,7 @@ public:
     /**
      * @brief Destroys an instance of the underlying type.
      *
-     * The instance must be convertible to the parent type of the meta
+     * It must be possible to cast the instance to the parent type of the meta
      * destructor. Otherwise, invoking the meta destructor results in an
      * undefined behavior.
      *
@@ -900,7 +917,7 @@ public:
     prop(Key &&key) const ENTT_NOEXCEPT {
         return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
-            return id.template convertible<Key>() && id == key;
+            return id.template can_cast<Key>() && id == key;
         }, node->prop);
     }
 
@@ -982,8 +999,9 @@ public:
     /**
      * @brief Sets the value of the variable enclosed by a given meta type.
      *
-     * The instance must be convertible to the parent type of the meta data.
-     * Otherwise, invoking the setter results in an undefined behavior.<br/>
+     * It must be possible to cast the instance to the parent type of the meta
+     * data. Otherwise, invoking the setter results in an undefined
+     * behavior.<br/>
      * The type of the value must coincide exactly with that of the variable
      * enclosed by the meta data. Otherwise, invoking the setter does nothing.
      *
@@ -999,8 +1017,9 @@ public:
     /**
      * @brief Gets the value of the variable enclosed by a given meta type.
      *
-     * The instance must be convertible to the parent type of the meta function.
-     * Otherwise, invoking the getter results in an undefined behavior.
+     * It must be possible to cast the instance to the parent type of the meta
+     * function. Otherwise, invoking the getter results in an undefined
+     * behavior.
      *
      * @param handle An opaque pointer to an instance of the underlying type.
      * @return A meta any containing the value of the underlying variable.
@@ -1033,7 +1052,7 @@ public:
     prop(Key &&key) const ENTT_NOEXCEPT {
         return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
-            return id.template convertible<Key>() && id == key;
+            return id.template can_cast<Key>() && id == key;
         }, node->prop);
     }
 
@@ -1139,9 +1158,9 @@ public:
      * To invoke a meta function, the types of the parameters must coincide
      * exactly with those required by the underlying function. Otherwise, an
      * empty and then invalid container is returned.<br/>
-     * The instance must be convertible to the parent type of the meta function.
-     * Otherwise, invoking the underlying function results in an undefined
-     * behavior.
+     * It must be possible to cast the instance to the parent type of the meta
+     * function. Otherwise, invoking the underlying function results in an
+     * undefined behavior.
      *
      * @tparam Args Types of arguments to use to invoke the function.
      * @param handle An opaque pointer to an instance of the underlying type.
@@ -1178,7 +1197,7 @@ public:
     prop(Key &&key) const ENTT_NOEXCEPT {
         return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
-            return id.template convertible<Key>() && id == key;
+            return id.template can_cast<Key>() && id == key;
         }, node->prop);
     }
 
@@ -1213,16 +1232,6 @@ public:
      */
     inline const char * name() const ENTT_NOEXCEPT {
         return node->name;
-    }
-
-    /**
-     * @brief Checks if an instance can be converted to a given type.
-     * @tparam Type Type to which to convert the instance.
-     * @return True if the conversion is viable, false otherwise.
-     */
-    template<typename Type>
-    inline bool convertible() const ENTT_NOEXCEPT {
-        return internal::convertible<Type>(node);
     }
 
     /**
@@ -1378,8 +1387,8 @@ public:
     /**
      * @brief Destroys an instance of the underlying type.
      *
-     * The instance must be convertible to the underlying type. Otherwise,
-     * invoking the meta destructor results in an undefined behavior.
+     * It must be possible to cast the instance to the underlying type.
+     * Otherwise, invoking the meta destructor results in an undefined behavior.
      *
      * @param handle An opaque pointer to an instance of the underlying type.
      */
@@ -1420,7 +1429,7 @@ public:
     prop(Key &&key) const ENTT_NOEXCEPT {
         return internal::iterate<&internal::meta_type_node::prop>([key = std::forward<Key>(key)](auto *node) {
             const auto &id = node->meta()->key();
-            return id.template convertible<Key>() && id == key;
+            return id.template can_cast<Key>() && id == key;
         }, node);
     }
 
@@ -1459,7 +1468,7 @@ struct meta_function_helper<Ret(Args...)> {
 private:
     template<std::size_t... Indexes>
     inline static auto accept(const internal::meta_type_node ** const types, std::index_sequence<Indexes...>) {
-        return (convertible<Args>(*(types+Indexes)) && ...);
+        return (can_cast<Args>(*(types+Indexes)) && ...);
     }
 };
 
@@ -1506,15 +1515,16 @@ inline void destroy([[maybe_unused]] meta_handle handle) {
     if constexpr(std::is_void_v<Type>) {
         assert(false);
     } else {
-        assert(handle.convertible<Type>());
-        handle.to<Type>()->~Type();
+        auto *instance = handle.try_cast<Type>();
+        assert(instance);
+        instance->~Type();
     }
 }
 
 
 template<typename Type, typename... Args, std::size_t... Indexes>
 inline meta_any construct(const meta_any * const any, std::index_sequence<Indexes...>) {
-    return meta_any{Type{(any+Indexes)->to<std::decay_t<Args>>()...}};
+    return meta_any{Type{(any+Indexes)->cast<std::decay_t<Args>>()...}};
 }
 
 
@@ -1523,10 +1533,11 @@ inline void setter([[maybe_unused]] meta_handle handle, [[maybe_unused]] const m
     if constexpr(Const) {
         assert(false);
     } else if constexpr(std::is_member_object_pointer_v<decltype(Data)>) {
-        assert(handle.convertible<Type>());
-        handle.to<Type>()->*Data = any.to<std::decay_t<decltype(std::declval<Type>().*Data)>>();
+        auto *instance = handle.try_cast<Type>();
+        assert(instance);
+        instance->*Data = any.cast<std::decay_t<decltype(std::declval<Type>().*Data)>>();
     } else {
-        *Data = any.to<std::decay_t<decltype(*Data)>>();
+        *Data = any.cast<std::decay_t<decltype(*Data)>>();
     }
 }
 
@@ -1534,8 +1545,9 @@ inline void setter([[maybe_unused]] meta_handle handle, [[maybe_unused]] const m
 template<typename Type, auto Data>
 inline meta_any getter([[maybe_unused]] meta_handle handle) {
     if constexpr(std::is_member_object_pointer_v<decltype(Data)>) {
-        assert(handle.convertible<Type>());
-        return meta_any{handle.to<Type>()->*Data};
+        auto *instance = handle.try_cast<Type>();
+        assert(instance);
+        return meta_any{handle.try_cast<Type>()->*Data};
     } else {
         return meta_any{*Data};
     }
@@ -1548,10 +1560,10 @@ invoke(const meta_handle &, const meta_any *any, std::index_sequence<Indexes...>
     using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Func), Func>>;
 
     if constexpr(std::is_void_v<typename helper_type::return_type>) {
-        (*Func)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
+        (*Func)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
         return meta_any{};
     } else {
-        return meta_any{(*Func)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
+        return meta_any{(*Func)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
     }
 }
 
@@ -1560,14 +1572,14 @@ template<auto Member, std::size_t... Indexes>
 std::enable_if_t<std::is_member_function_pointer_v<decltype(Member)>, meta_any>
 invoke(meta_handle &handle, const meta_any *any, std::index_sequence<Indexes...>) {
     using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Member), Member>>;
-    assert(handle.convertible<typename helper_type::class_type>());
-    auto *clazz = handle.to<typename helper_type::class_type>();
+    auto *clazz = handle.try_cast<typename helper_type::class_type>();
+    assert(clazz);
 
     if constexpr(std::is_void_v<typename helper_type::return_type>) {
-        (clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
+        (clazz->*Member)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
         return meta_any{};
     } else {
-        return meta_any{(clazz->*Member)((any+Indexes)->to<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
+        return meta_any{(clazz->*Member)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
     }
 }
 

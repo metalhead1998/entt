@@ -249,8 +249,9 @@ public:
             properties<std::integral_constant<decltype(Func), Func>>(std::forward<Property>(property)...),
             &internal::meta_info<Type>::resolve,
             [](meta_handle handle) {
-                assert(handle.convertible<Type>());
-                (*Func)(*handle.to<Type>());
+                auto *instance = handle.try_cast<Type>();
+                assert(instance);
+                (*Func)(*instance);
             },
             []() {
                 static meta_dtor meta{&node};
