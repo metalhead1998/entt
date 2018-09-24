@@ -142,6 +142,40 @@ public:
     }
 
     /**
+     * @brief Assigns a meta conversion function to a meta type.
+     *
+     * The given type must be such that an instance of the reflected type can be
+     * converted to it.
+     *
+     * @tparam To Type of the conversion function to assign to the meta type.
+     * @return A meta factory for the parent type.
+     */
+    template<typename To>
+    meta_factory & conv() ENTT_NOEXCEPT {
+        static_assert(std::is_convertible_v<Type, std::decay_t<To>>);
+        auto * const type = internal::meta_info<Type>::type;
+
+        static internal::meta_conv_node node{
+            type->conv,
+            &internal::meta_info<Type>::resolve,
+            &internal::meta_info<To>::resolve,
+            [](void *instance) -> meta_any {
+                return static_cast<std::decay_t<To>>(*static_cast<Type *>(instance));
+            },
+            []() {
+                static meta_conv meta{&node};
+                return &meta;
+            }
+        };
+
+        assert((!internal::meta_info<Type>::template conv<To>));
+        internal::meta_info<Type>::template conv<To> = &node;
+        type->conv = &node;
+
+        return *this;
+    }
+
+    /**
      * @brief Assigns a meta constructor to a meta type.
      *
      * Free functions can be assigned to meta types in the role of
@@ -249,9 +283,8 @@ public:
             properties<std::integral_constant<decltype(Func), Func>>(std::forward<Property>(property)...),
             &internal::meta_info<Type>::resolve,
             [](meta_handle handle) {
-                auto *instance = handle.try_cast<Type>();
-                assert(instance);
-                (*Func)(*instance);
+                assert(handle.type() == internal::meta_info<Type>::resolve()->meta());
+                (*Func)(*static_cast<Type *>(handle.data()));
             },
             []() {
                 static meta_dtor meta{&node};
@@ -400,7 +433,7 @@ inline meta_type * resolve() ENTT_NOEXCEPT {
  * @return The meta type associated with the given name, if any.
  */
 inline meta_type * resolve(const char *str) ENTT_NOEXCEPT {
-    return internal::iterate([name = hashed_string{str}](auto *node) {
+    return internal::find_if([name = hashed_string{str}](auto *node) {
         return node->name == name;
     }, internal::meta_info<>::type);
 }

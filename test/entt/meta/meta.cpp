@@ -298,7 +298,7 @@ TEST_F(Meta, MetaAnyNotComparable) {
     ASSERT_TRUE(any != entt::meta_any{});
 }
 
-TEST_F(Meta, MetaAnyCanCast) {
+TEST_F(Meta, MetaAnyCast) {
     entt::meta_any any{derived_type{}};
     auto handle = any.handle();
 
@@ -313,7 +313,7 @@ TEST_F(Meta, MetaAnyCanCast) {
     ASSERT_EQ(&std::as_const(any).cast<derived_type>(), handle.try_cast<derived_type>());
 }
 
-TEST_F(Meta, MetaAnyCanConvert) {
+TEST_F(Meta, MetaAnyConvert) {
     // TODO
 }
 
@@ -333,6 +333,10 @@ TEST_F(Meta, MetaBase) {
     ASSERT_EQ(base->parent(), entt::resolve("derived"));
     ASSERT_EQ(base->type(), entt::resolve<base_type>());
     ASSERT_EQ(base->cast(&derived), static_cast<base_type *>(&derived));
+}
+
+TEST_F(Meta, MetaConv) {
+    // TODO
 }
 
 TEST_F(Meta, MetaCtor) {
@@ -403,6 +407,10 @@ TEST_F(Meta, MetaCtorFunc) {
     ASSERT_NE(prop, nullptr);
     ASSERT_EQ(prop->key(), properties::prop_int);
     ASSERT_EQ(prop->value(), 42);
+}
+
+TEST_F(Meta, MetaCtorCastAndConvert) {
+    // TODO
 }
 
 TEST_F(Meta, MetaDtor) {
@@ -554,6 +562,10 @@ TEST_F(Meta, MetaDataConstStatic) {
     ASSERT_EQ(prop->value(), 3);
 }
 
+TEST_F(Meta, MetaDataCastAndConvert) {
+    // TODO
+}
+
 TEST_F(Meta, MetaFunc) {
     auto *func = entt::resolve<func_type>()->func("f2");
     func_type instance{};
@@ -595,7 +607,7 @@ TEST_F(Meta, MetaFunc) {
     ASSERT_FALSE(prop->value().cast<bool>());
 }
 
-TEST_F(Meta, MetaConstFunc) {
+TEST_F(Meta, MetaFuncConst) {
     auto *func = entt::resolve<func_type>()->func("f1");
     func_type instance{};
 
@@ -741,6 +753,10 @@ TEST_F(Meta, MetaFuncStaticRetVoid) {
     ASSERT_NE(prop, nullptr);
     ASSERT_EQ(prop->key(), properties::prop_bool);
     ASSERT_FALSE(prop->value().cast<bool>());
+}
+
+TEST_F(Meta, MetaFuncCastAndConvert) {
+    // TODO
 }
 
 TEST_F(Meta, MetaType) {

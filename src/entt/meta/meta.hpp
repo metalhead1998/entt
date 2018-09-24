@@ -20,6 +20,7 @@ struct meta_handle;
 class meta_any;
 class meta_prop;
 class meta_base;
+class meta_conv;
 class meta_ctor;
 class meta_dtor;
 class meta_data;
@@ -38,6 +39,7 @@ namespace internal {
 
 struct meta_prop_node;
 struct meta_base_node;
+struct meta_conv_node;
 struct meta_ctor_node;
 struct meta_dtor_node;
 struct meta_data_node;
@@ -63,6 +65,9 @@ struct meta_node<Type> {
     static meta_base_node *base;
 
     template<typename>
+    static meta_conv_node *conv;
+
+    template<typename>
     static meta_ctor_node *ctor;
 
     template<auto>
@@ -74,7 +79,7 @@ struct meta_node<Type> {
     template<auto>
     static meta_func_node *func;
 
-    static internal::meta_type_node * resolve() ENTT_NOEXCEPT;
+    static meta_type_node * resolve() ENTT_NOEXCEPT;
 };
 
 
@@ -85,6 +90,11 @@ meta_type_node * meta_node<Type>::type = nullptr;
 template<typename Type>
 template<typename>
 meta_base_node * meta_node<Type>::base = nullptr;
+
+
+template<typename Type>
+template<typename>
+meta_conv_node * meta_node<Type>::conv = nullptr;
 
 
 template<typename Type>
@@ -125,6 +135,15 @@ struct meta_base_node final {
     meta_type_node *(* const type)();
     void *(* const cast)(void *);
     meta_base *(* const meta)();
+};
+
+
+struct meta_conv_node final {
+    meta_conv_node * const next;
+    meta_type_node *(* const parent)();
+    meta_type_node *(* const type)();
+    meta_any(* const conv)(void *);
+    meta_conv *(* const meta)();
 };
 
 
@@ -189,6 +208,7 @@ struct meta_type_node final {
     void(* const destroy)(meta_handle);
     meta_type *(* const meta)();
     meta_base_node *base;
+    meta_conv_node *conv;
     meta_ctor_node *ctor;
     meta_dtor_node *dtor;
     meta_data_node *data;
@@ -197,74 +217,55 @@ struct meta_type_node final {
 
 
 template<typename Op, typename Node>
-auto iterate(Op op, const Node *curr) ENTT_NOEXCEPT {
-    if constexpr(std::is_void_v<decltype(op(curr))>) {
-        while(curr) {
-            op(curr);
-            curr = curr->next;
-        }
-    } else {
-        while(curr && !op(curr)) {
-            curr = curr->next;
-        }
-
-        return curr ? curr->meta() : nullptr;
+void iterate(Op op, const Node *curr) ENTT_NOEXCEPT {
+    while(curr) {
+        op(curr);
+        curr = curr->next;
     }
 }
 
 
 template<auto Member, typename Op>
-auto iterate(Op op, const meta_type_node *node) ENTT_NOEXCEPT
--> decltype(iterate(op, node->*Member))
-{
-    auto *curr = node->base;
-
-    if constexpr(std::is_void_v<decltype(op(node->*Member))>) {
+void iterate(Op op, const meta_type_node *node) ENTT_NOEXCEPT {
+    if(node) {
+        auto *curr = node->base;
         iterate(op, node->*Member);
 
         while(curr) {
             iterate<Member>(op, curr->type());
             curr = curr->next;
         }
-    } else {
-        decltype(iterate(op, node->*Member)) ret = iterate(op, node->*Member);
+    }
+}
+
+
+template<typename Op, typename Node>
+auto find_if(Op op, const Node *curr) ENTT_NOEXCEPT {
+    while(curr && !op(curr)) {
+        curr = curr->next;
+    }
+
+    return curr ? curr->meta() : nullptr;
+}
+
+
+template<auto Member, typename Op>
+auto find_if(Op op, const meta_type_node *node) ENTT_NOEXCEPT
+-> decltype(find_if(op, node->*Member))
+{
+    decltype(find_if(op, node->*Member)) ret = nullptr;
+
+    if(node) {
+        ret = find_if(op, node->*Member);
+        auto *curr = node->base;
 
         while(curr && !ret) {
-            ret = iterate<Member>(op, curr->type());
+            ret = find_if<Member>(op, curr->type());
             curr = curr->next;
         }
-
-        return ret;
-    }
-}
-
-
-template<typename Type>
-Type * try_cast(void *instance, const internal::meta_type_node *node) ENTT_NOEXCEPT {
-    Type *conv = nullptr;
-
-    if(node == internal::meta_info<Type>::resolve()) {
-        conv = static_cast<Type *>(instance);
-    } else {
-        auto *base = node ? node->base : nullptr;
-
-        while(base && !conv) {
-            conv = try_cast<Type>(base->cast(instance), base->type());
-            base = base->next;
-        }
     }
 
-    return conv;
-}
-
-
-template<typename Type>
-inline bool can_cast(const internal::meta_type_node *node) ENTT_NOEXCEPT {
-    const auto *type = internal::meta_info<Type>::resolve();
-
-    return node && ((node == type) || internal::iterate<&internal::meta_type_node::base>([type](auto *node) {
-        return node->type() == type;
-    }, node));
+    return ret;
 }
 
 
@@ -344,7 +345,20 @@ struct meta_handle final {
      */
     template<typename Type>
     inline const Type * try_cast() const ENTT_NOEXCEPT {
-        return internal::try_cast<Type>(instance, node);
+        const auto *type = internal::meta_info<Type>::resolve();
+        void *ret = nullptr;
+
+        if(node == type) {
+            ret = instance;
+        } else {
+            const auto *base = internal::find_if<&internal::meta_type_node::base>([type](auto *node) {
+                return node->type() == type;
+            }, node);
+
+            ret = base ? base->cast(instance) : nullptr;
+        }
+
+        return static_cast<const Type *>(ret);
     }
 
     /**
@@ -559,7 +573,11 @@ public:
      */
     template<typename Type>
     inline bool can_cast() const ENTT_NOEXCEPT {
-        return internal::can_cast<Type>(node);
+        const auto *type = internal::meta_info<Type>::resolve();
+
+        return (node == type) || internal::find_if<&internal::meta_type_node::base>([type](auto *node) {
+            return node->type() == type;
+        }, node);
     }
 
     /**
@@ -579,7 +597,7 @@ public:
     template<typename Type>
     inline const Type & cast() const ENTT_NOEXCEPT {
         assert(can_cast<Type>());
-        return *internal::try_cast<Type>(instance, node);
+        return *handle().try_cast<Type>();
     }
 
     /**
@@ -611,8 +629,11 @@ public:
      */
     template<typename Type>
     inline bool can_convert() const ENTT_NOEXCEPT {
-        // TODO
-        return false;
+        const auto *type = internal::meta_info<Type>::resolve();
+
+        return (node == type) || internal::find_if<&internal::meta_type_node::conv>([type](auto *node) {
+            return node->type() == type;
+        }, node);
     }
 
     /**
@@ -625,8 +646,23 @@ public:
      */
     template<typename Type>
     inline meta_any convert() const ENTT_NOEXCEPT {
-        // TODO
-        return meta_any{};
+        assert(can_convert<Type>());
+        const auto *type = internal::meta_info<Type>::resolve();
+        meta_any any{};
+
+        if(node == type) {
+            any = *static_cast<const Type *>(instance);
+        } else {
+            const auto *conv = internal::find_if<&internal::meta_type_node::conv>([type](auto *node) {
+                return node->type() == type;
+            }, node);
+
+            if(conv) {
+                any = conv->conv(instance);
+            }
+        }
+
+        return any;
     }
 
     /**
@@ -751,6 +787,52 @@ private:
 
 
 /**
+ * @brief Meta conversion function object.
+ *
+ * A meta conversion function is an opaque container for a conversion function
+ * to be used to convert a given instance to another type.
+ */
+class meta_conv final {
+    /*! @brief A factory is allowed to create meta objects. */
+    template<typename>
+    friend class meta_factory;
+
+    meta_conv(internal::meta_conv_node * node) ENTT_NOEXCEPT
+        : node{node}
+    {}
+
+public:
+    /**
+     * @brief Returns the meta type to which a meta conversion function belongs.
+     * @return The meta type to which the meta conversion function belongs.
+     */
+    inline meta_type * parent() const ENTT_NOEXCEPT {
+        return node->parent()->meta();
+    }
+
+    /**
+     * @brief Returns the meta type of a given meta conversion function.
+     * @return The meta type of the meta conversion function.
+     */
+    inline meta_type * type() const ENTT_NOEXCEPT {
+        return node->type()->meta();
+    }
+
+    /**
+     * @brief Converts an instance to a given type.
+     * @param instance The instance to convert.
+     * @return An opaque pointer to the instance to convert.
+     */
+    inline meta_any convert(void *instance) const ENTT_NOEXCEPT {
+        return node->conv(instance);
+    }
+
+private:
+    internal::meta_conv_node *node;
+};
+
+
+/**
  * @brief Meta constructor object.
  *
  * A meta constructor is an opaque container for a function to be used to
@@ -845,7 +927,7 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+        return internal::find_if([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
             return id.template can_cast<Key>() && id == key;
         }, node->prop);
@@ -915,7 +997,7 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+        return internal::find_if([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
             return id.template can_cast<Key>() && id == key;
         }, node->prop);
@@ -1050,7 +1132,7 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+        return internal::find_if([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
             return id.template can_cast<Key>() && id == key;
         }, node->prop);
@@ -1195,7 +1277,7 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::iterate([key = std::forward<Key>(key)](auto *curr) {
+        return internal::find_if([key = std::forward<Key>(key)](auto *curr) {
             const auto &id = curr->meta()->key();
             return id.template can_cast<Key>() && id == key;
         }, node->prop);
@@ -1258,7 +1340,7 @@ public:
      * @return The meta base associated with the given name, if any.
      */
     inline meta_base * base(const char *str) const ENTT_NOEXCEPT {
-        return internal::iterate<&internal::meta_type_node::base>([name = hashed_string{str}](auto *node) {
+        return internal::find_if<&internal::meta_type_node::base>([name = hashed_string{str}](auto *node) {
             return node->type()->name == name;
         }, node);
     }
@@ -1326,7 +1408,7 @@ public:
      * @return The meta data associated with the given name, if any.
      */
     inline meta_data * data(const char *str) const ENTT_NOEXCEPT {
-        return internal::iterate<&internal::meta_type_node::data>([name = hashed_string{str}](auto *node) {
+        return internal::find_if<&internal::meta_type_node::data>([name = hashed_string{str}](auto *node) {
             return node->name == name;
         }, node);
     }
@@ -1359,7 +1441,7 @@ public:
      * @return The meta function associated with the given name, if any.
      */
     inline meta_func * func(const char *str) const ENTT_NOEXCEPT {
-        return internal::iterate<&internal::meta_type_node::func>([name = hashed_string{str}](auto *node) {
+        return internal::find_if<&internal::meta_type_node::func>([name = hashed_string{str}](auto *node) {
             return node->name == name;
         }, node);
     }
@@ -1377,7 +1459,7 @@ public:
      */
     template<typename... Args>
     meta_any construct(Args &&... args) const {
-        auto *ctor = internal::iterate<&internal::meta_type_node::ctor>([](auto *node) {
+        auto *ctor = internal::find_if<&internal::meta_type_node::ctor>([](auto *node) {
             return node->meta()->template accept<Args...>();
         }, node);
 
@@ -1427,7 +1509,7 @@ public:
     template<typename Key>
     inline std::enable_if_t<!std::is_invocable_v<Key, meta_prop *>, meta_prop *>
     prop(Key &&key) const ENTT_NOEXCEPT {
-        return internal::iterate<&internal::meta_type_node::prop>([key = std::forward<Key>(key)](auto *node) {
+        return internal::find_if<&internal::meta_type_node::prop>([key = std::forward<Key>(key)](auto *node) {
             const auto &id = node->meta()->key();
             return id.template can_cast<Key>() && id == key;
         }, node);
@@ -1457,18 +1539,24 @@ struct meta_function_helper<Ret(Args...)> {
     using args_type = std::tuple<Args...>;
     static constexpr auto size = sizeof...(Args);
 
-    inline static auto arg(typename internal::meta_func_node::size_type index) {
-        return std::array<internal::meta_type_node *, sizeof...(Args)>{{internal::meta_info<Args>::resolve()...}}[index];
+    inline static auto arg(typename meta_func_node::size_type index) {
+        return std::array<meta_type_node *, sizeof...(Args)>{{meta_info<Args>::resolve()...}}[index];
     }
 
-    static bool accept(const internal::meta_type_node ** const types) {
+    static bool accept(const meta_type_node ** const types) {
         return accept(types, std::make_index_sequence<sizeof...(Args)>{});
     }
 
 private:
+    inline static bool can_cast_or_convert(const meta_type_node *from, const meta_type_node *to) ENTT_NOEXCEPT {
+        return (from == to)
+                || find_if<&meta_type_node::base>([to](auto *node) { return node->type() == to; }, from)
+                || find_if<&meta_type_node::conv>([to](auto *node) { return node->type() == to; }, from);
+    }
+
     template<std::size_t... Indexes>
-    inline static auto accept(const internal::meta_type_node ** const types, std::index_sequence<Indexes...>) {
-        return (can_cast<Args>(*(types+Indexes)) && ...);
+    inline static auto accept(const meta_type_node ** const types, std::index_sequence<Indexes...>) {
+        return (can_cast_or_convert(*(types+Indexes), meta_info<Args>::resolve()) && ...);
     }
 };
 
@@ -1515,21 +1603,22 @@ inline void destroy([[maybe_unused]] meta_handle handle) {
     if constexpr(std::is_void_v<Type>) {
         assert(false);
     } else {
-        auto *instance = handle.try_cast<Type>();
-        assert(instance);
-        instance->~Type();
+        assert(handle.type() == internal::meta_info<Type>::resolve()->meta());
+        static_cast<Type *>(handle.data())->~Type();
     }
 }
 
 
 template<typename Type, typename... Args, std::size_t... Indexes>
 inline meta_any construct(const meta_any * const any, std::index_sequence<Indexes...>) {
+    // TODO cast or convert
     return meta_any{Type{(any+Indexes)->cast<std::decay_t<Args>>()...}};
 }
 
 
 template<bool Const, typename Type, auto Data>
 inline void setter([[maybe_unused]] meta_handle handle, [[maybe_unused]] const meta_any &any) {
+    // TODO cast or convert
     if constexpr(Const) {
         assert(false);
     } else if constexpr(std::is_member_object_pointer_v<decltype(Data)>) {
@@ -1544,6 +1633,7 @@ inline void setter([[maybe_unused]] meta_handle handle, [[maybe_unused]] const m
 
 template<typename Type, auto Data>
 inline meta_any getter([[maybe_unused]] meta_handle handle) {
+    // TODO cast or convert
     if constexpr(std::is_member_object_pointer_v<decltype(Data)>) {
         auto *instance = handle.try_cast<Type>();
         assert(instance);
@@ -1557,7 +1647,8 @@ inline meta_any getter([[maybe_unused]] meta_handle handle) {
 template<auto Func, std::size_t... Indexes>
 std::enable_if_t<std::is_function_v<std::remove_pointer_t<decltype(Func)>>, meta_any>
 invoke(const meta_handle &, const meta_any *any, std::index_sequence<Indexes...>) {
-    using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Func), Func>>;
+    // TODO cast or convert
+    using helper_type = meta_function_helper<std::integral_constant<decltype(Func), Func>>;
 
     if constexpr(std::is_void_v<typename helper_type::return_type>) {
         (*Func)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
@@ -1571,7 +1662,8 @@ invoke(const meta_handle &, const meta_any *any, std::index_sequence<Indexes...>
 template<auto Member, std::size_t... Indexes>
 std::enable_if_t<std::is_member_function_pointer_v<decltype(Member)>, meta_any>
 invoke(meta_handle &handle, const meta_any *any, std::index_sequence<Indexes...>) {
-    using helper_type = internal::meta_function_helper<std::integral_constant<decltype(Member), Member>>;
+    // TODO cast or convert
+    using helper_type = meta_function_helper<std::integral_constant<decltype(Member), Member>>;
     auto *clazz = handle.try_cast<typename helper_type::class_type>();
     assert(clazz);
 
