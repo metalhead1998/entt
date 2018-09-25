@@ -884,8 +884,15 @@ public:
      */
     template<typename... Args>
     bool accept() const ENTT_NOEXCEPT {
-        std::array<const internal::meta_type_node *, sizeof...(Args)> args{{internal::meta_info<Args>::resolve()...}};
-        return sizeof...(Args) == size() ? node->accept(args.data()) : false;
+        // TODO delete, no longer required
+        bool valid = sizeof...(Args) == size();
+
+        if(valid) {
+            std::array<const internal::meta_type_node *, sizeof...(Args)> args{{internal::meta_info<Args>::resolve()...}};
+            valid = node->accept(args.data());
+        }
+
+        return valid;
     }
 
     /**
@@ -901,8 +908,15 @@ public:
      */
     template<typename... Args>
     meta_any invoke(Args &&... args) const {
-        std::array<const meta_any, sizeof...(Args)> any{{std::forward<Args>(args)...}};
-        return accept<Args...>() ? node->invoke(any.data()) : meta_any{};
+        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
+        meta_any any{};
+
+        if(accept<Args...>()) {
+            std::array<const meta_any, sizeof...(Args)> arguments{{std::forward<Args>(args)...}};
+            any = node->invoke(arguments.data());
+        }
+
+        return any;
     }
 
     /**
@@ -972,6 +986,7 @@ public:
      * @param handle An opaque pointer to an instance of the underlying type.
      */
     inline void invoke(meta_handle handle) const {
+        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
         node->invoke(handle);
     }
 
@@ -1075,6 +1090,7 @@ public:
      */
     template<typename Type>
     inline bool accept() const ENTT_NOEXCEPT {
+        // TODO delete, no longer required
         return node->accept(internal::meta_info<Type>::resolve());
     }
 
@@ -1093,7 +1109,12 @@ public:
      */
     template<typename Type>
     inline void set(meta_handle handle, Type &&value) const {
-        return accept<Type>() ? node->set(handle, meta_any{std::forward<Type>(value)}) : void();
+        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
+        if constexpr(std::is_same_v<std::decay_t<Type>, meta_any>) {
+            return node->accept(value.type()) ? node->set(handle, value) : void();
+        } else {
+            return accept<Type>() ? node->set(handle, meta_any{std::forward<Type>(value)}) : void();
+        }
     }
 
     /**
@@ -1230,8 +1251,15 @@ public:
      */
     template<typename... Args>
     bool accept() const ENTT_NOEXCEPT {
-        std::array<const internal::meta_type_node *, sizeof...(Args)> args{{internal::meta_info<Args>::resolve()...}};
-        return sizeof...(Args) == size() ? node->accept(args.data()) : false;
+        // TODO delete, no longer required
+        bool valid = sizeof...(Args) == size();
+
+        if(valid) {
+            std::array<const internal::meta_type_node *, sizeof...(Args)> args{{internal::meta_info<Args>::resolve()...}};
+            valid = node->accept(args.data());
+        }
+
+        return valid;
     }
 
     /**
@@ -1251,8 +1279,15 @@ public:
      */
     template<typename... Args>
     meta_any invoke(meta_handle handle, Args &&... args) const {
-        std::array<const meta_any, sizeof...(Args)> any{{std::forward<Args>(args)...}};
-        return accept<Args...>() ? node->invoke(std::move(handle), any.data()) : meta_any{};
+        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
+        meta_any any{};
+
+        if(accept<Args...>()) {
+            std::array<const meta_any, sizeof...(Args)> arguments{{std::forward<Args>(args)...}};
+            any = node->invoke(handle, arguments.data());
+        }
+
+        return any;
     }
 
     /**
@@ -1475,6 +1510,7 @@ public:
      * @param handle An opaque pointer to an instance of the underlying type.
      */
     inline void destroy(meta_handle handle) const {
+        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
         return node->dtor ? node->dtor->invoke(handle) : node->destroy(handle);
     }
 

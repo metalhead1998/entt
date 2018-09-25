@@ -348,8 +348,6 @@ TEST_F(Meta, MetaCtor) {
     ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), entt::resolve<int>());
     ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{1}), entt::resolve<char>());
     ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{2}), nullptr);
-    ASSERT_TRUE((ctor->accept<int, char>()));
-    ASSERT_FALSE((ctor->accept<>()));
 
     auto any = ctor->invoke(42, 'c');
     auto empty = ctor->invoke();
@@ -382,8 +380,6 @@ TEST_F(Meta, MetaCtorFunc) {
     ASSERT_EQ(ctor->parent(), entt::resolve("derived"));
     ASSERT_EQ(ctor->size(), entt::meta_ctor::size_type{});
     ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), nullptr);
-    ASSERT_FALSE((ctor->accept<int, char>()));
-    ASSERT_TRUE((ctor->accept<>()));
 
     auto any = ctor->invoke();
     auto empty = ctor->invoke(42, 'c');
@@ -450,13 +446,13 @@ TEST_F(Meta, MetaData) {
     ASSERT_STREQ(data->name(), "i");
     ASSERT_FALSE(data->is_const());
     ASSERT_FALSE(data->is_static());
-    ASSERT_TRUE(data->accept<int>());
-    ASSERT_FALSE(data->accept<char>());
     ASSERT_EQ(data->get(instance).cast<int>(), 0);
 
     data->set(instance, 42);
 
     ASSERT_EQ(data->get(instance).cast<int>(), 42);
+
+    // TODO set with meta_any as argument
 
     data->prop([](auto *prop) {
         ASSERT_NE(prop, nullptr);
@@ -483,8 +479,6 @@ TEST_F(Meta, MetaDataConst) {
     ASSERT_STREQ(data->name(), "j");
     ASSERT_TRUE(data->is_const());
     ASSERT_FALSE(data->is_static());
-    ASSERT_TRUE(data->accept<int>());
-    ASSERT_FALSE(data->accept<char>());
     ASSERT_EQ(data->get(instance).cast<int>(), 1);
 
     data->prop([](auto *prop) {
@@ -511,8 +505,6 @@ TEST_F(Meta, MetaDataStatic) {
     ASSERT_STREQ(data->name(), "h");
     ASSERT_FALSE(data->is_const());
     ASSERT_TRUE(data->is_static());
-    ASSERT_TRUE(data->accept<int>());
-    ASSERT_FALSE(data->accept<char>());
     ASSERT_EQ(data->get({}).cast<int>(), 2);
 
     data->set({}, 42);
@@ -543,8 +535,6 @@ TEST_F(Meta, MetaDataConstStatic) {
     ASSERT_STREQ(data->name(), "k");
     ASSERT_TRUE(data->is_const());
     ASSERT_TRUE(data->is_static());
-    ASSERT_TRUE(data->accept<int>());
-    ASSERT_FALSE(data->accept<char>());
     ASSERT_EQ(data->get({}).cast<int>(), 3);
 
     data->prop([](auto *prop) {
@@ -580,8 +570,6 @@ TEST_F(Meta, MetaFunc) {
     ASSERT_EQ(func->arg(entt::meta_func::size_type{0}), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{1}), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{2}), nullptr);
-    ASSERT_TRUE((func->accept<int, int>()));
-    ASSERT_FALSE((func->accept<int, char>()));
 
     auto any = func->invoke(instance, 3, 2);
     auto empty = func->invoke(instance);
@@ -620,8 +608,6 @@ TEST_F(Meta, MetaFuncConst) {
     ASSERT_EQ(func->ret(), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{0}), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{1}), nullptr);
-    ASSERT_TRUE((func->accept<int>()));
-    ASSERT_FALSE((func->accept<char>()));
 
     auto any = func->invoke(instance, 4);
     auto empty = func->invoke(instance, 'c');
@@ -659,8 +645,6 @@ TEST_F(Meta, MetaFuncRetVoid) {
     ASSERT_EQ(func->ret(), entt::resolve<void>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{0}), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{1}), nullptr);
-    ASSERT_TRUE((func->accept<int>()));
-    ASSERT_FALSE((func->accept<char>()));
 
     auto any = func->invoke(instance, 5);
 
@@ -694,8 +678,6 @@ TEST_F(Meta, MetaFuncStatic) {
     ASSERT_EQ(func->ret(), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{0}), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{1}), nullptr);
-    ASSERT_TRUE((func->accept<int>()));
-    ASSERT_FALSE((func->accept<char>()));
 
     auto any = func->invoke({}, 42);
     auto empty = func->invoke({}, 'c');
@@ -732,8 +714,6 @@ TEST_F(Meta, MetaFuncStaticRetVoid) {
     ASSERT_EQ(func->ret(), entt::resolve<void>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{0}), entt::resolve<int>());
     ASSERT_EQ(func->arg(entt::meta_func::size_type{1}), nullptr);
-    ASSERT_TRUE((func->accept<int>()));
-    ASSERT_FALSE((func->accept<char>()));
 
     auto any = func->invoke({}, 42);
 
