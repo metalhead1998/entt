@@ -16,6 +16,8 @@
 * meta: sort of meta view based on meta stuff to iterate entities, void * and meta info objects
 * meta: tests + doc (.md) for hierarchies, convertibles, casts, etc.
 * meta: add support for enums
+* meta: allow for free functions as function arguments, not only as template arguments (this way we can use lambdas that decay), is it possible?
+* meta: maybe convert overloads on meta_any are misleading...
 * registry::probe<component>(entt) (returns a component * if entt has the component, nullptr otherwise)
 * hashed string: add implicit check on construction for uniqueness (optional)
 * add a note about multithreading support to the README file

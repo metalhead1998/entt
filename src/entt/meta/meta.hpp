@@ -16,8 +16,8 @@
 namespace entt {
 
 
-struct meta_handle;
 class meta_any;
+class meta_handle;
 class meta_prop;
 class meta_base;
 class meta_conv;
@@ -154,8 +154,7 @@ struct meta_ctor_node final {
     const size_type size;
     meta_type_node *(* const parent)();
     meta_type_node *(* const arg)(size_type);
-    bool(* const accept)(const meta_type_node ** const);
-    meta_any(* const invoke)(const meta_any * const);
+    meta_any(* const invoke)(meta_any * const);
     meta_ctor *(* const meta)();
 };
 
@@ -176,9 +175,8 @@ struct meta_data_node final {
     const bool is_static;
     meta_type_node *(* const parent)();
     meta_type_node *(* const type)();
-    void(* const set)(meta_handle, const meta_any &);
+    void(* const set)(meta_handle, meta_any &);
     meta_any(* const get)(meta_handle);
-    bool(* const accept)(const meta_type_node * const);
     meta_data *(* const meta)();
 };
 
@@ -194,8 +192,7 @@ struct meta_func_node final {
     meta_type_node *(* const parent)();
     meta_type_node *(* const ret)();
     meta_type_node *(* const arg)(size_type);
-    bool(* const accept)(const meta_type_node ** const);
-    meta_any(* const invoke)(meta_handle, const meta_any *);
+    meta_any(* const invoke)(meta_handle, meta_any *);
     meta_func *(* const meta)();
 };
 
@@ -269,6 +266,25 @@ auto find_if(Op op, const meta_type_node *node) ENTT_NOEXCEPT
 }
 
 
+template<typename Type>
+const Type * try_cast(const meta_type_node *node, void *instance) ENTT_NOEXCEPT {
+    const auto *type = meta_info<Type>::resolve();
+    void *ret = nullptr;
+
+    if(node == type) {
+        ret = instance;
+    } else {
+        const auto *base = find_if<&meta_type_node::base>([type](auto *node) {
+            return node->type() == type;
+        }, node);
+
+        ret = base ? base->cast(instance) : nullptr;
+    }
+
+    return static_cast<const Type *>(ret);
+}
+
+
 }
 
 
@@ -276,138 +292,6 @@ auto find_if(Op op, const meta_type_node *node) ENTT_NOEXCEPT
  * Internal details not to be documented.
  * @endcond TURN_OFF_DOXYGEN
  */
-
-
-/**
- * @brief Meta handle object.
- *
- * A meta handle is an opaque pointer to an instance of any type.
- *
- * A handle doesn't perform copies and isn't responsible for the contained
- * object. It doesn't prolong the lifetime of the pointed instance. Users are
- * responsible for ensuring that the target object remains alive for the entire
- * interval of use of the handle.
- */
-struct meta_handle final {
-    /*! @brief Default constructor. */
-    meta_handle() ENTT_NOEXCEPT
-        : node{nullptr},
-          instance{nullptr}
-    {}
-
-    /**
-     * @brief Constructs a meta handle from a given instance.
-     * @tparam Type Type of object to use to initialize the handle.
-     * @param instance A reference to an object to use to initialize the handle.
-     */
-    template<typename Type, typename = std::enable_if_t<!std::is_same_v<std::decay_t<Type>, meta_handle>>>
-    meta_handle(Type &&instance) ENTT_NOEXCEPT
-        : node{internal::meta_info<Type>::resolve()},
-          instance{&instance}
-    {}
-
-    /*! @brief Default destructor. */
-    ~meta_handle() ENTT_NOEXCEPT = default;
-
-    /*! @brief Default copy constructor. */
-    meta_handle(const meta_handle &) ENTT_NOEXCEPT = default;
-
-    /*! @brief Default move constructor. */
-    meta_handle(meta_handle &&) ENTT_NOEXCEPT = default;
-
-    /*! @brief Default copy assignment operator. @return This handle. */
-    meta_handle & operator=(const meta_handle &) ENTT_NOEXCEPT = default;
-
-    /*! @brief Default move assignment operator. @return This handle. */
-    meta_handle & operator=(meta_handle &&) ENTT_NOEXCEPT = default;
-
-    /**
-     * @brief Returns the meta type of the underlying object.
-     * @return The meta type of the underlying object, if any.
-     */
-    inline meta_type * type() const ENTT_NOEXCEPT {
-        return node ? node->meta() : nullptr;
-    }
-
-    /**
-     * @brief Tries to cast an instance to a given type.
-     *
-     * The type of the instance must be such that the conversion is possible.
-     *
-     * @warning
-     * Attempting to perform a conversion that isn't viable results in undefined
-     * behavior.<br/>
-     * An assertion will abort the execution at runtime in debug mode in case
-     * the conversion is not feasible.
-     *
-     * @tparam Type Type to which to cast the instance.
-     * @return A pointer to the contained instance.
-     */
-    template<typename Type>
-    inline const Type * try_cast() const ENTT_NOEXCEPT {
-        const auto *type = internal::meta_info<Type>::resolve();
-        void *ret = nullptr;
-
-        if(node == type) {
-            ret = instance;
-        } else {
-            const auto *base = internal::find_if<&internal::meta_type_node::base>([type](auto *node) {
-                return node->type() == type;
-            }, node);
-
-            ret = base ? base->cast(instance) : nullptr;
-        }
-
-        return static_cast<const Type *>(ret);
-    }
-
-    /**
-     * @brief Tries to cast an instance to a given type.
-     *
-     * The type of the instance must be such that the conversion is possible.
-     *
-     * @warning
-     * Attempting to perform a conversion that isn't viable results in undefined
-     * behavior.<br/>
-     * An assertion will abort the execution at runtime in debug mode in case
-     * the conversion is not feasible.
-     *
-     * @tparam Type Type to which to cast the instance.
-     * @return A pointer to the contained instance.
-     */
-    template<typename Type>
-    inline Type * try_cast() ENTT_NOEXCEPT {
-        return const_cast<Type *>(const_cast<const meta_handle *>(this)->try_cast<Type>());
-    }
-
-    /**
-     * @brief Returns an opaque pointer to the contained instance.
-     * @return An opaque pointer the contained instance, if any.
-     */
-    inline const void * data() const ENTT_NOEXCEPT {
-        return instance;
-    }
-
-    /**
-     * @brief Returns an opaque pointer to the contained instance.
-     * @return An opaque pointer the contained instance, if any.
-     */
-    inline void * data() ENTT_NOEXCEPT {
-        return const_cast<void *>(const_cast<const meta_handle *>(this)->data());
-    }
-
-    /**
-     * @brief Returns false if a handle is empty, true otherwise.
-     * @return False if the handle is empty, true otherwise.
-     */
-    inline explicit operator bool() const ENTT_NOEXCEPT {
-        return instance;
-    }
-
-private:
-    const internal::meta_type_node *node;
-    void *instance;
-};
 
 
 /**
@@ -423,9 +307,13 @@ private:
  * the overall performance.
  */
 class meta_any final {
+    /*! @brief TODO */
+    friend class meta_handle;
+
     using storage_type = std::aligned_storage_t<sizeof(void *), alignof(void *)>;
     using compare_fn_type = bool(*)(const void *, const void *);
-    using destroy_fn_type = void(*)(void *);
+    using copy_fn_type = void *(*)(storage_type &, const void *);
+    using destroy_fn_type = void(*)(storage_type &);
 
     template<typename Type>
     inline static auto compare(int, const Type &lhs, const Type &rhs)
@@ -471,32 +359,55 @@ public:
             return compare(0, *static_cast<const actual_type *>(lhs), *static_cast<const actual_type *>(rhs));
         };
 
-        if constexpr(sizeof(std::decay_t<Type>) <= sizeof(void *)) {
+        if constexpr(sizeof(actual_type) <= sizeof(void *)) {
             new (&storage) actual_type{std::forward<Type>(type)};
             instance = &storage;
 
-            destroy = [](void *instance) {
-                static_cast<actual_type *>(instance)->~actual_type();
+            copy = [](storage_type &storage, const void *instance) -> void * {
+                return new (&storage) actual_type{*static_cast<const actual_type *>(instance)};
+            };
+
+            destroy = [](storage_type &storage) {
+                internal::meta_info<Type>::resolve()->destroy(**reinterpret_cast<actual_type **>(&storage));
             };
         } else {
-            instance = new actual_type{std::forward<Type>(type)};
-            new (&storage) actual_type *{static_cast<actual_type *>(instance)};
+            using chunk_type = std::aligned_storage_t<sizeof(actual_type), alignof(actual_type)>;
+            auto *chunk = new chunk_type;
+            instance = new (chunk) actual_type{std::forward<Type>(type)};
+            new (&storage) chunk_type *{chunk};
 
-            destroy = [](void *instance) {
-                delete static_cast<actual_type *>(instance);
+            copy = [](storage_type &storage, const void *instance) -> void * {
+                auto *chunk = new chunk_type;
+                new (&storage) chunk_type *{chunk};
+                return new (chunk) actual_type{*static_cast<const actual_type *>(instance)};
+            };
+
+            destroy = [](storage_type &storage) {
+                auto *chunk = *reinterpret_cast<chunk_type **>(&storage);
+                internal::meta_info<Type>::resolve()->destroy(*reinterpret_cast<actual_type *>(chunk));
+                delete chunk;
             };
         }
     }
 
-    /*! @brief Frees the internal storage, whatever it means. */
-    ~meta_any() {
-        if(destroy) {
-            destroy(instance);
+    /**
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @param other TODO
+     */
+    meta_any(const meta_any &other)
+        : meta_any{}
+    {
+        if(other) {
+            instance = copy(storage, other.instance);
+            destroy = other.destroy;
+            node = other.node;
+            comparator = other.comparator;
+            copy = other.copy;
         }
     }
-
-    /*! @brief Copying a meta any isn't allowed. */
-    meta_any(const meta_any &) = delete;
 
     /**
      * @brief Move constructor.
@@ -508,45 +419,28 @@ public:
      * @param other The instance to move from.
      */
     meta_any(meta_any &&other) ENTT_NOEXCEPT
-        : storage{},
-          instance{nullptr},
-          destroy{other.destroy},
-          node{other.node},
-          comparator{other.comparator}
+        : meta_any{}
     {
-        std::memcpy(&storage, &other.storage, sizeof(storage_type));
-        instance = (other.instance == &other.storage ? &storage : *reinterpret_cast<void **>(&storage));
-        other.destroy = nullptr;
+        swap(*this, other);
     }
 
-    /*! @brief Copying a meta any isn't allowed. @return This container. */
-    meta_any & operator=(const meta_any &) = delete;
+    /*! @brief Frees the internal storage, whatever it means. */
+    ~meta_any() {
+        if(destroy) {
+            destroy(storage);
+        }
+    }
 
     /**
-     * @brief Move assignment operator.
+     * @brief TODO
      *
-     * After meta any move assignment, instances that have been moved from are
-     * placed in a valid but unspecified state. It's highly discouraged to
-     * continue using them.
+     * TODO
      *
-     * @param other The instance to move from.
-     * @return This container.
+     * @param other TODO
+     * @return TODO
      */
-    meta_any & operator=(meta_any &&other) ENTT_NOEXCEPT {
-        if(this != &other) {
-            if(destroy) {
-                destroy(instance);
-                destroy = nullptr;
-            }
-
-            auto tmp{std::move(other)};
-            std::memcpy(&storage, &tmp.storage, sizeof(storage_type));
-            instance = (tmp.instance == &tmp.storage ? &storage : *reinterpret_cast<void **>(&storage));
-            std::swap(destroy, tmp.destroy);
-            std::swap(node, tmp.node);
-            std::swap(comparator, tmp.comparator);
-        }
-
+    meta_any & operator=(meta_any other) {
+        swap(*this, other);
         return *this;
     }
 
@@ -559,11 +453,19 @@ public:
     }
 
     /**
-     * @brief Returns a handle for the underlying instance of a meta any.
-     * @return A handle for the underlying instance of a meta any, if any.
+     * @brief Returns an opaque pointer to the contained instance.
+     * @return An opaque pointer the contained instance, if any.
      */
-    inline meta_handle handle() const ENTT_NOEXCEPT {
-        return node ? node->handle(instance) : meta_handle{};
+    inline const void * data() const ENTT_NOEXCEPT {
+        return instance;
+    }
+
+    /**
+     * @brief Returns an opaque pointer to the contained instance.
+     * @return An opaque pointer the contained instance, if any.
+     */
+    inline void * data() ENTT_NOEXCEPT {
+        return const_cast<void *>(const_cast<const meta_any *>(this)->data());
     }
 
     /**
@@ -597,7 +499,7 @@ public:
     template<typename Type>
     inline const Type & cast() const ENTT_NOEXCEPT {
         assert(can_cast<Type>());
-        return *handle().try_cast<Type>();
+        return *internal::try_cast<Type>(node, instance);
     }
 
     /**
@@ -646,7 +548,6 @@ public:
      */
     template<typename Type>
     inline meta_any convert() const ENTT_NOEXCEPT {
-        assert(can_convert<Type>());
         const auto *type = internal::meta_info<Type>::resolve();
         meta_any any{};
 
@@ -658,11 +559,35 @@ public:
             }, node);
 
             if(conv) {
-                any = conv->conv(instance);
+                any = conv->convert(instance);
             }
         }
 
         return any;
+    }
+
+    /**
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @tparam Type TODO
+     * @return TODO
+     */
+    template<typename Type>
+    inline bool convert() ENTT_NOEXCEPT {
+        bool valid = (node == internal::meta_info<Type>::resolve());
+
+        if(!valid) {
+            auto any = std::as_const(*this).convert<Type>();
+
+            if(any) {
+                std::swap(*this, any);
+                valid = true;
+            }
+        }
+
+        return valid;
     }
 
     /**
@@ -683,12 +608,170 @@ public:
         return (!instance && !other.instance) || (instance && other.instance && node == other.node && comparator(instance, other.instance));
     }
 
+    /**
+     * @brief TODO
+     *
+     * TODO
+     *
+     * @param lhs TODO
+     * @param rhs TODO
+     */
+    friend void swap(meta_any &lhs, meta_any &rhs) {
+        using std::swap;
+
+        std::swap(lhs.storage, rhs.storage);
+        std::swap(lhs.instance, rhs.instance);
+        std::swap(lhs.destroy, rhs.destroy);
+        std::swap(lhs.node, rhs.node);
+        std::swap(lhs.comparator, rhs.comparator);
+        std::swap(lhs.copy, rhs.copy);
+
+        if(lhs.instance == &rhs.storage) {
+            lhs.instance = &lhs.storage;
+        }
+
+        if(rhs.instance == &lhs.storage) {
+            rhs.instance = &rhs.storage;
+        }
+    }
+
 private:
     storage_type storage;
     void *instance;
     destroy_fn_type destroy;
     internal::meta_type_node *node;
     compare_fn_type comparator;
+    copy_fn_type copy;
+};
+
+
+/**
+ * @brief Meta handle object.
+ *
+ * A meta handle is an opaque pointer to an instance of any type.
+ *
+ * A handle doesn't perform copies and isn't responsible for the contained
+ * object. It doesn't prolong the lifetime of the pointed instance. Users are
+ * responsible for ensuring that the target object remains alive for the entire
+ * interval of use of the handle.
+ */
+class meta_handle final {
+    meta_handle(int, meta_any &any) ENTT_NOEXCEPT
+        : node{any.node},
+          instance{any.instance}
+    {}
+
+    template<typename Type>
+    meta_handle(char, Type &&instance) ENTT_NOEXCEPT
+        : node{internal::meta_info<Type>::resolve()},
+          instance{&instance}
+    {}
+
+public:
+    /*! @brief Default constructor. */
+    meta_handle() ENTT_NOEXCEPT
+        : node{nullptr},
+          instance{nullptr}
+    {}
+
+    /**
+     * @brief Constructs a meta handle from a given instance.
+     * @tparam Type Type of object to use to initialize the handle.
+     * @param instance A reference to an object to use to initialize the handle.
+     */
+    template<typename Type, typename = std::enable_if_t<!std::is_same_v<std::decay_t<Type>, meta_handle>>>
+    meta_handle(Type &&instance) ENTT_NOEXCEPT
+        : meta_handle{0, std::forward<Type>(instance)}
+    {}
+
+    /*! @brief Default destructor. */
+    ~meta_handle() ENTT_NOEXCEPT = default;
+
+    /*! @brief Default copy constructor. */
+    meta_handle(const meta_handle &) ENTT_NOEXCEPT = default;
+
+    /*! @brief Default move constructor. */
+    meta_handle(meta_handle &&) ENTT_NOEXCEPT = default;
+
+    /*! @brief Default copy assignment operator. @return This handle. */
+    meta_handle & operator=(const meta_handle &) ENTT_NOEXCEPT = default;
+
+    /*! @brief Default move assignment operator. @return This handle. */
+    meta_handle & operator=(meta_handle &&) ENTT_NOEXCEPT = default;
+
+    /**
+     * @brief Returns the meta type of the underlying object.
+     * @return The meta type of the underlying object, if any.
+     */
+    inline meta_type * type() const ENTT_NOEXCEPT {
+        return node ? node->meta() : nullptr;
+    }
+
+    /**
+     * @brief Tries to cast an instance to a given type.
+     *
+     * The type of the instance must be such that the conversion is possible.
+     *
+     * @warning
+     * Attempting to perform a conversion that isn't viable results in undefined
+     * behavior.<br/>
+     * An assertion will abort the execution at runtime in debug mode in case
+     * the conversion is not feasible.
+     *
+     * @tparam Type Type to which to cast the instance.
+     * @return A pointer to the contained instance.
+     */
+    template<typename Type>
+    inline const Type * try_cast() const ENTT_NOEXCEPT {
+        return internal::try_cast<Type>(node, instance);
+    }
+
+    /**
+     * @brief Tries to cast an instance to a given type.
+     *
+     * The type of the instance must be such that the conversion is possible.
+     *
+     * @warning
+     * Attempting to perform a conversion that isn't viable results in undefined
+     * behavior.<br/>
+     * An assertion will abort the execution at runtime in debug mode in case
+     * the conversion is not feasible.
+     *
+     * @tparam Type Type to which to cast the instance.
+     * @return A pointer to the contained instance.
+     */
+    template<typename Type>
+    inline Type * try_cast() ENTT_NOEXCEPT {
+        return const_cast<Type *>(const_cast<const meta_handle *>(this)->try_cast<Type>());
+    }
+
+    /**
+     * @brief Returns an opaque pointer to the contained instance.
+     * @return An opaque pointer the contained instance, if any.
+     */
+    inline const void * data() const ENTT_NOEXCEPT {
+        return instance;
+    }
+
+    /**
+     * @brief Returns an opaque pointer to the contained instance.
+     * @return An opaque pointer the contained instance, if any.
+     */
+    inline void * data() ENTT_NOEXCEPT {
+        return const_cast<void *>(const_cast<const meta_handle *>(this)->data());
+    }
+
+    /**
+     * @brief Returns false if a handle is empty, true otherwise.
+     * @return False if the handle is empty, true otherwise.
+     */
+    inline explicit operator bool() const ENTT_NOEXCEPT {
+        return instance;
+    }
+
+private:
+    const internal::meta_type_node *node;
+    void *instance;
 };
 
 
@@ -877,25 +960,6 @@ public:
     }
 
     /**
-     * @brief Indicates whether a given list of types of arguments is accepted.
-     * @tparam Args List of types of arguments to check.
-     * @return True if the meta constructor accepts the arguments, false
-     * otherwise.
-     */
-    template<typename... Args>
-    bool accept() const ENTT_NOEXCEPT {
-        // TODO delete, no longer required
-        bool valid = sizeof...(Args) == size();
-
-        if(valid) {
-            std::array<const internal::meta_type_node *, sizeof...(Args)> args{{internal::meta_info<Args>::resolve()...}};
-            valid = node->accept(args.data());
-        }
-
-        return valid;
-    }
-
-    /**
      * @brief Creates an instance of the underlying type, if possible.
      *
      * To create a valid instance, the types of the parameters must coincide
@@ -908,11 +972,10 @@ public:
      */
     template<typename... Args>
     meta_any invoke(Args &&... args) const {
-        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
+        std::array<meta_any, sizeof...(Args)> arguments{{std::forward<Args>(args)...}};
         meta_any any{};
 
-        if(accept<Args...>()) {
-            std::array<const meta_any, sizeof...(Args)> arguments{{std::forward<Args>(args)...}};
+        if(sizeof...(Args) == size()) {
             any = node->invoke(arguments.data());
         }
 
@@ -986,7 +1049,6 @@ public:
      * @param handle An opaque pointer to an instance of the underlying type.
      */
     inline void invoke(meta_handle handle) const {
-        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
         node->invoke(handle);
     }
 
@@ -1084,17 +1146,6 @@ public:
     }
 
     /**
-     * @brief Indicates whether a given type of value is accepted.
-     * @tparam Type Type of value to check.
-     * @return True if the meta data accepts the type of value, false otherwise.
-     */
-    template<typename Type>
-    inline bool accept() const ENTT_NOEXCEPT {
-        // TODO delete, no longer required
-        return node->accept(internal::meta_info<Type>::resolve());
-    }
-
-    /**
      * @brief Sets the value of the variable enclosed by a given meta type.
      *
      * It must be possible to cast the instance to the parent type of the meta
@@ -1109,12 +1160,8 @@ public:
      */
     template<typename Type>
     inline void set(meta_handle handle, Type &&value) const {
-        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
-        if constexpr(std::is_same_v<std::decay_t<Type>, meta_any>) {
-            return node->accept(value.type()) ? node->set(handle, value) : void();
-        } else {
-            return accept<Type>() ? node->set(handle, meta_any{std::forward<Type>(value)}) : void();
-        }
+        meta_any any{std::forward<Type>(value)};
+        node->set(handle, any);
     }
 
     /**
@@ -1245,24 +1292,6 @@ public:
     }
 
     /**
-     * @brief Indicates whether a given list of types of arguments is accepted.
-     * @tparam Args List of types of arguments to check.
-     * @return True if the meta function accepts the arguments, false otherwise.
-     */
-    template<typename... Args>
-    bool accept() const ENTT_NOEXCEPT {
-        // TODO delete, no longer required
-        bool valid = sizeof...(Args) == size();
-
-        if(valid) {
-            std::array<const internal::meta_type_node *, sizeof...(Args)> args{{internal::meta_info<Args>::resolve()...}};
-            valid = node->accept(args.data());
-        }
-
-        return valid;
-    }
-
-    /**
      * @brief Invokes the underlying function, if possible.
      *
      * To invoke a meta function, the types of the parameters must coincide
@@ -1279,11 +1308,10 @@ public:
      */
     template<typename... Args>
     meta_any invoke(meta_handle handle, Args &&... args) const {
-        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
+        std::array<meta_any, sizeof...(Args)> arguments{{std::forward<Args>(args)...}};
         meta_any any{};
 
-        if(accept<Args...>()) {
-            std::array<const meta_any, sizeof...(Args)> arguments{{std::forward<Args>(args)...}};
+        if(sizeof...(Args) == size()) {
             any = node->invoke(handle, arguments.data());
         }
 
@@ -1399,13 +1427,14 @@ public:
      */
     template<typename... Args>
     inline meta_ctor * ctor() const ENTT_NOEXCEPT {
-        meta_ctor *meta = nullptr;
-
-        ctor([&meta](meta_ctor *curr) {
-            meta = curr->accept<Args...>() ? curr : meta;
-        });
-
-        return meta;
+        // meta_ctor *meta = nullptr;
+        //
+        // ctor([&meta](meta_ctor *curr) {
+        //     // TODO doh!
+        //     // meta = curr->accept<Args...>() ? curr : meta;
+        // });
+        //
+        // return meta;
     }
 
     /**
@@ -1494,11 +1523,12 @@ public:
      */
     template<typename... Args>
     meta_any construct(Args &&... args) const {
-        auto *ctor = internal::find_if<&internal::meta_type_node::ctor>([](auto *node) {
-            return node->meta()->template accept<Args...>();
-        }, node);
-
-        return ctor ? ctor->invoke(std::forward<Args>(args)...) : meta_any{};
+        // TODO doh
+        // auto *ctor = internal::find_if<&internal::meta_type_node::ctor>([](auto *node) {
+        //     return node->meta()->template accept<Args...>();
+        // }, node);
+        //
+        // return ctor ? ctor->invoke(std::forward<Args>(args)...) : meta_any{};
     }
 
     /**
@@ -1510,7 +1540,6 @@ public:
      * @param handle An opaque pointer to an instance of the underlying type.
      */
     inline void destroy(meta_handle handle) const {
-        // TODO args can also be meta_any, meta_handle, etc and I should work with them in this case
         return node->dtor ? node->dtor->invoke(handle) : node->destroy(handle);
     }
 
@@ -1573,26 +1602,14 @@ template<typename Ret, typename... Args>
 struct meta_function_helper<Ret(Args...)> {
     using return_type = Ret;
     using args_type = std::tuple<Args...>;
+
+    template<std::size_t Index>
+    using arg_type = std::decay_t<std::tuple_element_t<Index, args_type>>;
+
     static constexpr auto size = sizeof...(Args);
 
     inline static auto arg(typename meta_func_node::size_type index) {
         return std::array<meta_type_node *, sizeof...(Args)>{{meta_info<Args>::resolve()...}}[index];
-    }
-
-    static bool accept(const meta_type_node ** const types) {
-        return accept(types, std::make_index_sequence<sizeof...(Args)>{});
-    }
-
-private:
-    inline static bool can_cast_or_convert(const meta_type_node *from, const meta_type_node *to) ENTT_NOEXCEPT {
-        return (from == to)
-                || find_if<&meta_type_node::base>([to](auto *node) { return node->type() == to; }, from)
-                || find_if<&meta_type_node::conv>([to](auto *node) { return node->type() == to; }, from);
-    }
-
-    template<std::size_t... Indexes>
-    inline static auto accept(const meta_type_node ** const types, std::index_sequence<Indexes...>) {
-        return (can_cast_or_convert(*(types+Indexes), meta_info<Args>::resolve()) && ...);
     }
 };
 
@@ -1646,33 +1663,43 @@ inline void destroy([[maybe_unused]] meta_handle handle) {
 
 
 template<typename Type, typename... Args, std::size_t... Indexes>
-inline meta_any construct(const meta_any * const any, std::index_sequence<Indexes...>) {
-    // TODO cast or convert
-    return meta_any{Type{(any+Indexes)->cast<std::decay_t<Args>>()...}};
+inline meta_any construct(meta_any * const args, std::index_sequence<Indexes...>) {
+    meta_any any{};
+
+    if((((args+Indexes)->can_cast<std::decay_t<Args>>() || (args+Indexes)->convert<std::decay_t<Args>>()) && ...)) {
+        any = Type{(args+Indexes)->cast<std::decay_t<Args>>()...};
+    }
+
+    return any;
 }
 
 
 template<bool Const, typename Type, auto Data>
-inline void setter([[maybe_unused]] meta_handle handle, [[maybe_unused]] const meta_any &any) {
-    // TODO cast or convert
+inline void setter([[maybe_unused]] meta_handle handle, [[maybe_unused]] meta_any &any) {
     if constexpr(Const) {
         assert(false);
     } else if constexpr(std::is_member_object_pointer_v<decltype(Data)>) {
-        auto *instance = handle.try_cast<Type>();
-        assert(instance);
-        instance->*Data = any.cast<std::decay_t<decltype(std::declval<Type>().*Data)>>();
+        using data_type = std::decay_t<decltype(std::declval<Type>().*Data)>;
+        auto *clazz = handle.try_cast<Type>();
+        assert(clazz);
+
+        if(any.can_cast<data_type>() || any.convert<data_type>()) {
+            clazz->*Data = any.cast<data_type>();
+        }
     } else {
-        *Data = any.cast<std::decay_t<decltype(*Data)>>();
+        using data_type = std::decay_t<decltype(*Data)>;
+
+        if(any.can_cast<data_type>() || any.convert<data_type>()) {
+            *Data = any.cast<data_type>();
+        }
     }
 }
 
 
 template<typename Type, auto Data>
 inline meta_any getter([[maybe_unused]] meta_handle handle) {
-    // TODO cast or convert
     if constexpr(std::is_member_object_pointer_v<decltype(Data)>) {
-        auto *instance = handle.try_cast<Type>();
-        assert(instance);
+        assert(handle.try_cast<Type>());
         return meta_any{handle.try_cast<Type>()->*Data};
     } else {
         return meta_any{*Data};
@@ -1682,33 +1709,43 @@ inline meta_any getter([[maybe_unused]] meta_handle handle) {
 
 template<auto Func, std::size_t... Indexes>
 std::enable_if_t<std::is_function_v<std::remove_pointer_t<decltype(Func)>>, meta_any>
-invoke(const meta_handle &, const meta_any *any, std::index_sequence<Indexes...>) {
-    // TODO cast or convert
+invoke(const meta_handle &, meta_any *args, std::index_sequence<Indexes...>) {
     using helper_type = meta_function_helper<std::integral_constant<decltype(Func), Func>>;
+    meta_any any{};
 
-    if constexpr(std::is_void_v<typename helper_type::return_type>) {
-        (*Func)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
-        return meta_any{};
-    } else {
-        return meta_any{(*Func)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
+    if((((args+Indexes)->can_cast<typename helper_type::template arg_type<Indexes>>()
+            || (args+Indexes)->convert<typename helper_type::template arg_type<Indexes>>()) && ...))
+    {
+        if constexpr(std::is_void_v<typename helper_type::return_type>) {
+            (*Func)((args+Indexes)->cast<typename helper_type::template arg_type<Indexes>>()...);
+        } else {
+            any = meta_any{(*Func)((args+Indexes)->cast<typename helper_type::template arg_type<Indexes>>()...)};
+        }
     }
+
+    return any;
 }
 
 
 template<auto Member, std::size_t... Indexes>
 std::enable_if_t<std::is_member_function_pointer_v<decltype(Member)>, meta_any>
-invoke(meta_handle &handle, const meta_any *any, std::index_sequence<Indexes...>) {
-    // TODO cast or convert
+invoke(meta_handle &handle, meta_any *args, std::index_sequence<Indexes...>) {
     using helper_type = meta_function_helper<std::integral_constant<decltype(Member), Member>>;
     auto *clazz = handle.try_cast<typename helper_type::class_type>();
     assert(clazz);
+    meta_any any{};
 
-    if constexpr(std::is_void_v<typename helper_type::return_type>) {
-        (clazz->*Member)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...);
-        return meta_any{};
-    } else {
-        return meta_any{(clazz->*Member)((any+Indexes)->cast<std::decay_t<std::tuple_element_t<Indexes, typename helper_type::args_type>>>()...)};
+    if((((args+Indexes)->can_cast<typename helper_type::template arg_type<Indexes>>()
+            || (args+Indexes)->convert<typename helper_type::template arg_type<Indexes>>()) && ...))
+    {
+        if constexpr(std::is_void_v<typename helper_type::return_type>) {
+            (clazz->*Member)((args+Indexes)->cast<typename helper_type::template arg_type<Indexes>>()...);
+        } else {
+            any = meta_any{(clazz->*Member)((args+Indexes)->cast<typename helper_type::template arg_type<Indexes>>()...)};
+        }
     }
+
+    return any;
 }
 
 

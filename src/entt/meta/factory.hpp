@@ -201,8 +201,7 @@ public:
             helper_type::size,
             &internal::meta_info<Type>::resolve,
             &helper_type::arg,
-            &helper_type::accept,
-            [](const meta_any * const any) {
+            [](meta_any * const any) {
                 return internal::invoke<Func>(nullptr, any, std::make_index_sequence<helper_type::size>{});
             },
             []() {
@@ -241,8 +240,7 @@ public:
             helper_type::size,
             &internal::meta_info<Type>::resolve,
             &helper_type::arg,
-            &helper_type::accept,
-            [](const meta_any * const any) {
+            [](meta_any * const any) {
                 return internal::construct<Type, Args...>(any, std::make_index_sequence<helper_type::size>{});
             },
             []() {
@@ -328,9 +326,6 @@ public:
             &internal::meta_info<data_type<Data>>::resolve,
             &internal::setter<std::is_const_v<data_type<Data>>, Type, Data>,
             &internal::getter<Type, Data>,
-            [](const internal::meta_type_node * const other) {
-                return other == internal::meta_info<data_type<Data>>::resolve();
-            },
             []() {
                 static meta_data meta{&node};
                 return &meta;
@@ -373,8 +368,7 @@ public:
             &internal::meta_info<Type>::resolve,
             &internal::meta_info<typename func_type<Func>::return_type>::resolve,
             &func_type<Func>::arg,
-            &func_type<Func>::accept,
-            [](meta_handle handle, const meta_any *any) {
+            [](meta_handle handle, meta_any *any) {
                 return internal::invoke<Func>(handle, any, std::make_index_sequence<func_type<Func>::size>{});
             },
             []() {
