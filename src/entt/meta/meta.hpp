@@ -285,6 +285,16 @@ const Type * try_cast(const meta_type_node *node, void *instance) ENTT_NOEXCEPT 
 }
 
 
+template<typename Type, auto Member>
+bool can_cast_or_convert(const meta_type_node *node) ENTT_NOEXCEPT {
+    const auto *type = meta_info<Type>::resolve();
+
+    return (node == type) || find_if<Member>([type](auto *node) {
+        return node->type() == type;
+    }, node);
+}
+
+
 }
 
 
@@ -475,11 +485,7 @@ public:
      */
     template<typename Type>
     inline bool can_cast() const ENTT_NOEXCEPT {
-        const auto *type = internal::meta_info<Type>::resolve();
-
-        return (node == type) || internal::find_if<&internal::meta_type_node::base>([type](auto *node) {
-            return node->type() == type;
-        }, node);
+        return internal::can_cast_or_convert<Type, &internal::meta_type_node::base>(node);
     }
 
     /**
@@ -531,11 +537,7 @@ public:
      */
     template<typename Type>
     inline bool can_convert() const ENTT_NOEXCEPT {
-        const auto *type = internal::meta_info<Type>::resolve();
-
-        return (node == type) || internal::find_if<&internal::meta_type_node::conv>([type](auto *node) {
-            return node->type() == type;
-        }, node);
+        return internal::can_cast_or_convert<Type, &internal::meta_type_node::conv>(node);
     }
 
     /**
@@ -1370,6 +1372,15 @@ class meta_type final {
         : node{node}
     {}
 
+    template<typename... Args, std::size_t... Indexes>
+    inline meta_ctor * ctor(std::index_sequence<Indexes...>) const ENTT_NOEXCEPT {
+        return internal::find_if([](auto *node) {
+            return node->size == sizeof...(Args) &&
+                    ((internal::can_cast_or_convert<Args, &internal::meta_type_node::base>(node->arg(Indexes))
+                      || internal::can_cast_or_convert<Args, &internal::meta_type_node::conv>(node->arg(Indexes))) && ...);
+        }, node->ctor);
+    }
+
 public:
     /**
      * @brief Returns the name assigned to a given meta type.
@@ -1427,14 +1438,7 @@ public:
      */
     template<typename... Args>
     inline meta_ctor * ctor() const ENTT_NOEXCEPT {
-        // meta_ctor *meta = nullptr;
-        //
-        // ctor([&meta](meta_ctor *curr) {
-        //     // TODO doh!
-        //     // meta = curr->accept<Args...>() ? curr : meta;
-        // });
-        //
-        // return meta;
+        return ctor<Args...>(std::make_index_sequence<sizeof...(Args)>{});
     }
 
     /**
@@ -1656,7 +1660,7 @@ inline void destroy([[maybe_unused]] meta_handle handle) {
     if constexpr(std::is_void_v<Type>) {
         assert(false);
     } else {
-        assert(handle.type() == internal::meta_info<Type>::resolve()->meta());
+        assert(handle.type() == meta_info<Type>::resolve()->meta());
         static_cast<Type *>(handle.data())->~Type();
     }
 }

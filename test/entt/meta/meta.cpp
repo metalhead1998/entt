@@ -369,71 +369,69 @@ TEST_F(Meta, MetaConv) {
 }
 
 TEST_F(Meta, MetaCtor) {
-    // TODO WIP
-    // auto *ctor = entt::resolve<derived_type>()->ctor<int, char>();
-    //
-    // ASSERT_NE(ctor, nullptr);
-    // ASSERT_EQ(ctor->parent(), entt::resolve("derived"));
-    // ASSERT_EQ(ctor->size(), entt::meta_ctor::size_type{2});
-    // ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), entt::resolve<int>());
-    // ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{1}), entt::resolve<char>());
-    // ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{2}), nullptr);
-    //
-    // auto any = ctor->invoke(42, 'c');
-    // auto empty = ctor->invoke();
-    //
-    // ASSERT_FALSE(empty);
-    // ASSERT_TRUE(any);
-    // ASSERT_TRUE(any.can_cast<derived_type>());
-    // ASSERT_EQ(any.cast<derived_type>().i, 42);
-    // ASSERT_EQ(any.cast<derived_type>().c, 'c');
-    //
-    // ctor->prop([](auto *prop) {
-    //     ASSERT_NE(prop, nullptr);
-    //     ASSERT_EQ(prop->key(), properties::prop_bool);
-    //     ASSERT_EQ(prop->value(), false);
-    // });
-    //
-    // ASSERT_EQ(ctor->prop(properties::prop_int), nullptr);
-    //
-    // auto *prop = ctor->prop(properties::prop_bool);
-    //
-    // ASSERT_NE(prop, nullptr);
-    // ASSERT_EQ(prop->key(), properties::prop_bool);
-    // ASSERT_EQ(prop->value(), false);
+    auto *ctor = entt::resolve<derived_type>()->ctor<int, char>();
+
+    ASSERT_NE(ctor, nullptr);
+    ASSERT_EQ(ctor->parent(), entt::resolve("derived"));
+    ASSERT_EQ(ctor->size(), entt::meta_ctor::size_type{2});
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), entt::resolve<int>());
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{1}), entt::resolve<char>());
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{2}), nullptr);
+
+    auto any = ctor->invoke(42, 'c');
+    auto empty = ctor->invoke();
+
+    ASSERT_FALSE(empty);
+    ASSERT_TRUE(any);
+    ASSERT_TRUE(any.can_cast<derived_type>());
+    ASSERT_EQ(any.cast<derived_type>().i, 42);
+    ASSERT_EQ(any.cast<derived_type>().c, 'c');
+
+    ctor->prop([](auto *prop) {
+        ASSERT_NE(prop, nullptr);
+        ASSERT_EQ(prop->key(), properties::prop_bool);
+        ASSERT_EQ(prop->value(), false);
+    });
+
+    ASSERT_EQ(ctor->prop(properties::prop_int), nullptr);
+
+    auto *prop = ctor->prop(properties::prop_bool);
+
+    ASSERT_NE(prop, nullptr);
+    ASSERT_EQ(prop->key(), properties::prop_bool);
+    ASSERT_EQ(prop->value(), false);
 }
 
 TEST_F(Meta, MetaCtorFunc) {
-    // TODO WIP
-    // auto *ctor = entt::resolve<derived_type>()->ctor<>();
-    //
-    // ASSERT_NE(ctor, nullptr);
-    // ASSERT_EQ(ctor->parent(), entt::resolve("derived"));
-    // ASSERT_EQ(ctor->size(), entt::meta_ctor::size_type{});
-    // ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), nullptr);
-    //
-    // auto any = ctor->invoke();
-    // auto empty = ctor->invoke(42, 'c');
-    //
-    // ASSERT_FALSE(empty);
-    // ASSERT_TRUE(any);
-    // ASSERT_TRUE(any.can_cast<derived_type>());
-    // ASSERT_EQ(any.cast<derived_type>().i, 42);
-    // ASSERT_EQ(any.cast<derived_type>().c, 'c');
-    //
-    // ctor->prop([](auto *prop) {
-    //     ASSERT_NE(prop, nullptr);
-    //     ASSERT_EQ(prop->key(), properties::prop_int);
-    //     ASSERT_EQ(prop->value(), 42);
-    // });
-    //
-    // ASSERT_EQ(ctor->prop(properties::prop_bool), nullptr);
-    //
-    // auto *prop = ctor->prop(properties::prop_int);
-    //
-    // ASSERT_NE(prop, nullptr);
-    // ASSERT_EQ(prop->key(), properties::prop_int);
-    // ASSERT_EQ(prop->value(), 42);
+    auto *ctor = entt::resolve<derived_type>()->ctor<>();
+
+    ASSERT_NE(ctor, nullptr);
+    ASSERT_EQ(ctor->parent(), entt::resolve("derived"));
+    ASSERT_EQ(ctor->size(), entt::meta_ctor::size_type{});
+    ASSERT_EQ(ctor->arg(entt::meta_ctor::size_type{0}), nullptr);
+
+    auto any = ctor->invoke();
+    auto empty = ctor->invoke(42, 'c');
+
+    ASSERT_FALSE(empty);
+    ASSERT_TRUE(any);
+    ASSERT_TRUE(any.can_cast<derived_type>());
+    ASSERT_EQ(any.cast<derived_type>().i, 42);
+    ASSERT_EQ(any.cast<derived_type>().c, 'c');
+
+    ctor->prop([](auto *prop) {
+        ASSERT_NE(prop, nullptr);
+        ASSERT_EQ(prop->key(), properties::prop_int);
+        ASSERT_EQ(prop->value(), 42);
+    });
+
+    ASSERT_EQ(ctor->prop(properties::prop_bool), nullptr);
+
+    auto *prop = ctor->prop(properties::prop_int);
+
+    ASSERT_NE(prop, nullptr);
+    ASSERT_EQ(prop->key(), properties::prop_int);
+    ASSERT_EQ(prop->value(), 42);
 }
 
 TEST_F(Meta, MetaCtorMetaAnyArgs) {
